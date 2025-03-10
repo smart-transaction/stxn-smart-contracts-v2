@@ -79,7 +79,7 @@ test/                    # Unit & integration tests
 ## 📦 Stack
 
 - **Foundry** – Smart contract tooling
-- **Solidity ≥0.8.28
+- **Solidity** ≥0.8.28
 - **Appchain Layer** – For off-chain orchestration and task pooling
 
 ---
