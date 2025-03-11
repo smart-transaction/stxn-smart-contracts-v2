@@ -1,29 +1,40 @@
 // SPDX-License-Identifier: BSL-1.
 pragma solidity 0.8.28;
 
-import {ICallBreaker, CallObject, UserObjective, AdditionalData} from "src/interfaces/ICallBreaker.sol";
+import {ICallBreaker, CallObject, UserObjective, MEVTimeData} from "src/interfaces/ICallBreaker.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract CallBreaker is ICallBreaker {
+contract CallBreaker is ICallBreaker, ReentrancyGuard {
+    using EnumerableSet for EnumerableSet.UintSet;
+
+    /// @notice The slot at which the call currently being executed is stored
+    bytes32 public constant EXECUTING_CALL_INDEX_SLOT =
+        bytes32(uint256(keccak256("CallBreaker.EXEC_CALL_INDEX_SLOT")) - 1);
+
     CallObject[][] public callGrid;
     bytes[][] public returnGrid;
-    AdditionalData[] public additionalData;
 
-    // /// @dev Error thrown when there is not enough Ether left
-    // /// @dev Selector 0x75483b53
-    // error OutOfEther();
-    // /// @dev Error thrown when a call fails
-    // /// @dev Selector 0x3204506f
-    // error CallFailed();
-    // /// @dev Error thrown when there is a length mismatch
-    // /// @dev Selector 0xff633a38
-    // error LengthMismatch();
+    // store addional data needed during execution
+    bytes32[] public mevTimeDataKeyList;
+    mapping(bytes32 => bytes) public mevTimeDataStore;
+
+    /// @dev Error thrown when there is not enough Ether left
+    /// @dev Selector 0x75483b53
+    error OutOfEther();
+    /// @dev Error thrown when a call fails
+    /// @dev Selector 0x3204506f
+    error CallFailed();
+    /// @dev Error thrown when there is a length mismatch
+    /// @dev Selector 0xff633a38
+    error LengthMismatch();
     // /// @dev Error thrown when call verification fails
     // /// @dev Selector 0xcc68b8ba
     // error CallVerificationFailed();
     // /// @dev Error thrown when index of the callObj doesn't match the index of the returnObj
     // /// @dev Selector 0xdba5f6f9
     // error IndexMismatch(uint256, uint256);
-    // /// @dev Error thrown when a nonexistent key is fetched from the associatedDataStore
+    // /// @dev Error thrown when a nonexistent key is fetched from the mevTimeDataStore
     // /// @dev Selector 0xf7c16a37
     // error NonexistentKey();
     // /// @dev Caller must be EOA
@@ -44,17 +55,19 @@ contract CallBreaker is ICallBreaker {
     /// @notice executes and verifies that the given calls, when executed, gives the correct return values
     /// @dev SECURITY NOTICE: This function is only callable when the portal is closed. It requires the caller to be an EOA.
     /// @param _userObjectives The calls to be executed
+    /// @param _signatures The signatures of the user objectives
     /// @param _orderOfExecution Array of indexes specifying order of execution based on DAG
     /// @param _returnsBytes The return values provided by solver to be compareed with return values from call obj execution if user hasn't provided one
-    /// @param _additionalData To be used in the execute and verify call, also reserved for tipping the solver
+    /// @param _mevTimeData To be used in the execute and verify call, also reserved for tipping the solver
     function executeAndVerify(
         UserObjective[] calldata _userObjectives,
-        uint256[] calldata _orderOfExecution,
+        bytes[] calldata _signatures,
         bytes[] calldata _returnsBytes,
-        AdditionalData[] calldata _additionalData
-    ) external payable {
-        CallObject[][] memory calls = _setupExecutionData(_userObjectives, _returnsBytes, _additionalData);
-        // _executeAndVerifyCalls(data);
+        uint256[] calldata _orderOfExecution,
+        MEVTimeData[] calldata _mevTimeData
+    ) external payable nonReentrant {
+        uint256 callLength = _setupExecutionData(_userObjectives, _signatures, _returnsBytes, _mevTimeData);
+        _executeAndVerifyCalls(callLength, _orderOfExecution);
     }
 
     // /// @notice Returns a value from the record of return values from the callObject.
@@ -75,11 +88,11 @@ contract CallBreaker is ICallBreaker {
     //     return thisReturn.returnvalue;
     // }
 
-    // /// @notice Fetches the value associated with a given key from the associatedDataStore
+    // /// @notice Fetches the value associated with a given key from the mevTimeDataStore
     // /// @param key The key whose associated value is to be fetched
     // /// @return The value associated with the given key
     // function fetchFromAssociatedDataStore(bytes32 key) public view returns (bytes memory) {
-    //     return associatedDataStore[key];
+    //     return mevTimeDataStore[key];
     // }
 
     // /// @notice Fetches the CallObject and ReturnObject at a given index from the callStore and returnStore respectively
@@ -162,52 +175,57 @@ contract CallBreaker is ICallBreaker {
 
     function _setupExecutionData(
         UserObjective[] memory userObjectives,
-        bytes[] memory returnValues,
-        AdditionalData[] memory associatedData
-    ) internal returns (CallObject[][] memory) {
-    //     if (calls.length != returnValues.length) {
-    //         revert LengthMismatch();
-    //     }
+        bytes[] memory signatures,
+        bytes[] memory returnValues, // TODO: store solver values
+        MEVTimeData[] memory mevTimeData
+    ) internal returns (uint256 callLength) {
+        uint256 len = userObjectives.length;
 
-    //     _setPortalOpen(calls, returnValues);
-    //     _populateCallsAndReturnValues(calls, returnValues);
-    //     _populateAssociatedDataStore(associatedData);
-    //     _populateCallIndices();
+        for (uint256 i; i < len; i++) {
+            _verifySignatures(userObjectives[i], signatures[i]);
 
-    //     return calls;
+            callGrid.push(userObjectives[i].callObjects);
+            returnGrid.push(userObjectives[i].returnValues);
+
+            callLength += userObjectives[i].callObjects.length;
+        }
+
+        if (callLength != returnValues.length) {
+            revert LengthMismatch();
+        }
+
+        _populateMEVDataStore(mevTimeData);
     }
 
-    // function _executeAndVerifyCalls(bytes memory callData) internal {
-    //     CallObject[] memory calls = abi.decode(callData, (CallObject[]));
-    //     uint256 l = calls.length;
-    //     for (uint256 i = 0; i < l; i++) {
-    //         _setCurrentlyExecutingCallIndex(i);
-    //         _executeAndVerifyCall(i);
-    //     }
+    function _executeAndVerifyCalls(uint256 callLength, uint256[] memory orderOfExecution) internal {
+        for (uint256 i = 0; i < callLength; i++) {
+            _setCurrentlyExecutingCallIndex(i);
+            (uint256 u_index, uint256 c_index) = resolveFlatIndex(orderOfExecution[i]);
+            _executeAndVerifyCall(callGrid[u_index][c_index]);
+        }
 
-    //     _setPortalClosed();
-    //     _cleanUpStorage();
-    //     emit VerifyStxn();
-    // }
+        // _cleanUpStorage(); TODO: clean non transient stores
+        emit VerifyStxn();
+    }
 
-    // /// @dev Executes a single call and verifies the result by generating the call-return pair ID
-    // /// @param i The index of the CallObject and returnobject to be executed and verified
-    // function _executeAndVerifyCall(uint256 i) internal {
-    //     (CallObject memory callObj, ReturnObject memory retObj) = getPair(i);
-    //     if (callObj.amount > address(this).balance) {
-    //         revert OutOfEther();
-    //     }
+    /// @dev Executes a single call and verifies the result
+    /// @param callObj the CallObject to be executed and verified
+    function _executeAndVerifyCall(CallObject memory callObj) internal {
+        if (callObj.amount > address(this).balance) {
+            revert OutOfEther();
+        }
 
-    //     (bool success, bytes memory returnvalue) =
-    //         callObj.addr.call{gas: callObj.gas, value: callObj.amount}(callObj.callvalue);
-    //     if (!success) {
-    //         revert CallFailed();
-    //     }
+        (bool success, bytes memory returnvalue) =
+            callObj.addr.call{gas: callObj.gas, value: callObj.amount}(callObj.callvalue);
+        if (!success) {
+            revert CallFailed();
+        }
 
-    //     if (keccak256(retObj.returnvalue) != keccak256(returnvalue)) {
-    //         revert CallVerificationFailed();
-    //     }
-    // }
+        // TODO: conditionally verify with user provided or solver provide return value
+        // if (keccak256(retObj.returnvalue) != keccak256(returnvalue)) {
+        //     revert CallVerificationFailed();
+        // }
+    }
 
     // /// @dev Resets the trace stores with the provided calls and return values.
     // /// @param calls An array of CallObject to be stored in callStore.
@@ -232,16 +250,53 @@ contract CallBreaker is ICallBreaker {
     //         emit CallPopulated(_getCall(i), i);
     //     }
     // }
+    /// @notice Sets the index of the currently executing call.
+    /// @dev This function should only be called while a call in deferredCalls is being executed.
+    function _setCurrentlyExecutingCallIndex(uint256 _callIndex) internal {
+        uint256 slot = uint256(EXECUTING_CALL_INDEX_SLOT);
+        assembly ("memory-safe") {
+            tstore(slot, _callIndex)
+        }
+    }
 
-    // /// @notice Populates the associatedDataStore with a list of key-value pairs
-    // /// @param associatedData The abi-encoded list of (bytes32, bytes32) key-value pairs
-    // function _populateAssociatedDataStore(AdditionalData[] memory associatedData) internal {
-    //     uint256 l = associatedData.length;
-    //     for (uint256 i = 0; i < l; i++) {
-    //         associatedDataKeyList.push(associatedData[i].key);
-    //         associatedDataStore[associatedData[i].key] = associatedData[i].value;
-    //     }
-    // }
+    /// @notice Populates the mevTimeDataStore with a list of key-value pairs
+    /// @param mevTimeData The abi-encoded list of (bytes32, bytes32) key-value pairs
+    function _populateMEVDataStore(MEVTimeData[] memory mevTimeData) internal {
+        uint256 len = mevTimeData.length;
+        for (uint256 i; i < len; i++) {
+            mevTimeDataKeyList.push(mevTimeData[i].key); // TODO: check if we will need this when using transient storage
+            mevTimeDataStore[mevTimeData[i].key] = mevTimeData[i].value;
+        }
+    }
+
+    function _populateCallIndices() internal {
+        // TODO: should be called if and when checking for future indexes to avoid unnecssary cost
+        // for (uint i = 0; i < callGrid.length; i++) {
+        //     for (uint j = 0; j < callGrid[i].length; j++) {
+        //         store in callIndex
+        //     }
+        // }
+    }
+
+    function _verifySignatures(UserObjective memory userObj, bytes memory signature) internal view {
+        // TODO: check for correctness of the data, revert if false
+    }
+
+    function resolveFlatIndex(uint256 flatIndex) internal view returns (uint256, uint256) {
+        uint256 runningIndex = 0;
+
+        // TODO: avoid callGrid[i].length calculation by storing these values in tstore
+        for (uint256 u_index = 0; u_index < callGrid.length; u_index++) {
+            uint256 len = callGrid[u_index].length;
+            if (flatIndex < runningIndex + len) {
+                uint256 c_index = flatIndex - runningIndex;
+                return (u_index, c_index);
+            }
+            runningIndex += len;
+        }
+
+        revert("Flat index out of bounds");
+    }
 
     // function _expectCallAt(CallObject memory callObj, uint256 index) internal view {
     //     if (keccak256(abi.encode(_getCall(index))) != keccak256(abi.encode(callObj))) {

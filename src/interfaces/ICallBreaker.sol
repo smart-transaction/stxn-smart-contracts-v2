@@ -5,6 +5,7 @@ pragma solidity 0.8.28;
 struct CallObject {
     uint256 salt;
     uint256 amount;
+    uint256 chainId;
     uint256 gas;
     address addr;
     bool skippable;
@@ -16,20 +17,22 @@ struct CallObject {
 /// @dev Struct for holding a sequence of call objects and their return values pushed by the user
 struct UserObjective {
     uint256 nonce;
+    address sender;
     CallObject[] callObjects;
-    bytes[] returnObjects;
+    bytes[] returnValues;
 }
 
-struct AdditionalData {
+struct MEVTimeData {
     bytes32 key;
     bytes value;
 }
 
 interface ICallBreaker {
     function executeAndVerify(
-        UserObjective[] calldata userObjectives,
+        UserObjective[] calldata _userObjectives,
+        bytes[] calldata _signatures,
+        bytes[] calldata _returnsBytes,
         uint256[] calldata _orderOfExecution,
-        bytes[] calldata returnsBytes,
-        AdditionalData[] calldata associatedData
+        MEVTimeData[] calldata _mevTimeData
     ) external payable;
 }
