@@ -19,7 +19,6 @@ struct UserObjective {
     uint256 nonce;
     address sender;
     CallObject[] callObjects;
-    bytes[] returnValues;
 }
 
 struct MEVTimeData {

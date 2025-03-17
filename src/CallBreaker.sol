@@ -8,12 +8,14 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 contract CallBreaker is ICallBreaker, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.UintSet;
 
+    bytes32 public constant EMPTY_DATA = keccak256(bytes(""));
+
     /// @notice The slot at which the call currently being executed is stored
     bytes32 public constant EXECUTING_CALL_INDEX_SLOT =
         bytes32(uint256(keccak256("CallBreaker.EXEC_CALL_INDEX_SLOT")) - 1);
 
+    /// @notice The list of user objectives stored in a grid format
     CallObject[][] public callGrid;
-    bytes[][] public returnGrid;
 
     // store addional data needed during execution
     bytes32[] public mevTimeDataKeyList;
@@ -28,18 +30,16 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @dev Error thrown when there is a length mismatch
     /// @dev Selector 0xff633a38
     error LengthMismatch();
-    // /// @dev Error thrown when call verification fails
-    // /// @dev Selector 0xcc68b8ba
-    // error CallVerificationFailed();
+    /// @dev Error thrown when call verification fails
+    /// @dev Selector 0xcc68b8ba
+    error CallVerificationFailed();
     // /// @dev Error thrown when index of the callObj doesn't match the index of the returnObj
     // /// @dev Selector 0xdba5f6f9
     // error IndexMismatch(uint256, uint256);
     // /// @dev Error thrown when a nonexistent key is fetched from the mevTimeDataStore
     // /// @dev Selector 0xf7c16a37
     // error NonexistentKey();
-    // /// @dev Caller must be EOA
-    // /// @dev Selector 0x09d1095b
-    // error MustBeEOA();
+
     // /// @dev Error thrown when the call position of the incoming call is not as expected.
     // /// @dev Selector 0xd2c5d316
     // error CallPositionFailed(CallObject, uint256);
@@ -67,7 +67,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         MEVTimeData[] calldata _mevTimeData
     ) external payable nonReentrant {
         uint256 callLength = _setupExecutionData(_userObjectives, _signatures, _returnsBytes, _mevTimeData);
-        _executeAndVerifyCalls(callLength, _orderOfExecution);
+        _executeAndVerifyCalls(callLength, _orderOfExecution, _returnsBytes);
     }
 
     // /// @notice Returns a value from the record of return values from the callObject.
@@ -169,7 +169,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     // /// @notice Fetches the currently executing call index
     // /// @dev This function reverts if the portal is closed
     // /// @return The currently executing call index
-    // function getCurrentlyExecuting() public view onlyPortalOpen returns (uint256) {
+    // function getCurrentlyExecuting() public view returns (uint256) {
     //     return _executingCallIndex();
     // }
 
@@ -185,7 +185,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
             _verifySignatures(userObjectives[i], signatures[i]);
 
             callGrid.push(userObjectives[i].callObjects);
-            returnGrid.push(userObjectives[i].returnValues);
 
             callLength += userObjectives[i].callObjects.length;
         }
@@ -197,11 +196,13 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         _populateMEVDataStore(mevTimeData);
     }
 
-    function _executeAndVerifyCalls(uint256 callLength, uint256[] memory orderOfExecution) internal {
-        for (uint256 i = 0; i < callLength; i++) {
-            _setCurrentlyExecutingCallIndex(i);
-            (uint256 u_index, uint256 c_index) = resolveFlatIndex(orderOfExecution[i]);
-            _executeAndVerifyCall(callGrid[u_index][c_index]);
+    function _executeAndVerifyCalls(uint256 callLength, uint256[] memory orderOfExecution, bytes[] memory returnValues)
+        internal
+    {
+        for (uint256 index = 0; index < callLength; index++) {
+            _setCurrentlyExecutingCallIndex(index);
+            (uint256 u_index, uint256 c_index) = resolveFlatIndex(orderOfExecution[index]);
+            _executeAndVerifyCall(callGrid[u_index][c_index], returnValues[index]);
         }
 
         // _cleanUpStorage(); TODO: clean non transient stores
@@ -210,46 +211,26 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
 
     /// @dev Executes a single call and verifies the result
     /// @param callObj the CallObject to be executed and verified
-    function _executeAndVerifyCall(CallObject memory callObj) internal {
+    function _executeAndVerifyCall(CallObject memory callObj, bytes memory solverReturnValue) internal {
         if (callObj.amount > address(this).balance) {
             revert OutOfEther();
         }
 
-        (bool success, bytes memory returnvalue) =
+        (bool success, bytes memory returnFromExecution) =
             callObj.addr.call{gas: callObj.gas, value: callObj.amount}(callObj.callvalue);
         if (!success) {
             revert CallFailed();
         }
 
-        // TODO: conditionally verify with user provided or solver provide return value
-        // if (keccak256(retObj.returnvalue) != keccak256(returnvalue)) {
-        //     revert CallVerificationFailed();
-        // }
+        if (callObj.verifiable) {
+            bytes memory expectedReturn =
+                keccak256(callObj.returnvalue) == EMPTY_DATA ? solverReturnValue : callObj.returnvalue;
+            if (keccak256(expectedReturn) != keccak256(returnFromExecution)) {
+                revert CallVerificationFailed();
+            }
+        }
     }
 
-    // /// @dev Resets the trace stores with the provided calls and return values.
-    // /// @param calls An array of CallObject to be stored in callStore.
-    // /// @param returnValues An array of ReturnObject to be stored in returnStore.
-    // function _populateCallsAndReturnValues(CallObject[] memory calls, ReturnObject[] memory returnValues) internal {
-    //     for (uint256 i = 0; i < calls.length; i++) {
-    //         callStore.push().store(calls[i]);
-    //         returnStore.push(returnValues[i]);
-
-    //         // Populating hintdices value while setting execution data
-    //         bytes32 key = keccak256(abi.encode(calls[i]));
-    //         hintdicesStoreKeyList.push(key);
-    //         hintdicesStore[key].push(i);
-    //     }
-    // }
-
-    // function _populateCallIndices() internal {
-    //     uint256 l = callStore.length;
-    //     for (uint256 i = 0; i < l; i++) {
-    //         Call memory call = Call({callId: keccak256(abi.encode(_getCall(i))), index: i});
-    //         callList.push(call);
-    //         emit CallPopulated(_getCall(i), i);
-    //     }
-    // }
     /// @notice Sets the index of the currently executing call.
     /// @dev This function should only be called while a call in deferredCalls is being executed.
     function _setCurrentlyExecutingCallIndex(uint256 _callIndex) internal {
@@ -282,6 +263,12 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         // TODO: check for correctness of the data, revert if false
     }
 
+    // function _expectCallAt(CallObject memory callObj, uint256 index) internal view {
+    //     if (keccak256(abi.encode(_getCall(index))) != keccak256(abi.encode(callObj))) {
+    //         revert CallPositionFailed(callObj, index);
+    //     }
+    // }
+
     function resolveFlatIndex(uint256 flatIndex) internal view returns (uint256, uint256) {
         uint256 runningIndex = 0;
 
@@ -297,10 +284,4 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
 
         revert("Flat index out of bounds");
     }
-
-    // function _expectCallAt(CallObject memory callObj, uint256 index) internal view {
-    //     if (keccak256(abi.encode(_getCall(index))) != keccak256(abi.encode(callObj))) {
-    //         revert CallPositionFailed(callObj, index);
-    //     }
-    // }
 }
