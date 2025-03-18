@@ -24,7 +24,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @notice The list of user objectives stored in a grid format
     CallObject[][] public callGrid;
 
-    /// TODO: accounting logic
+    /// TODO: accounting and tipping logic
 
     /// @notice store addional data needed during execution
     bytes32[] public mevTimeDataKeyList;
@@ -168,6 +168,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         for (uint256 i; i < len; i++) {
             _verifySignatures(userObjectives[i], signatures[i]);
 
+            // TODO: calculate and transfer individual costs for each user objective
+            // _collectCostOfExecution(userObjectives[i])
             callGrid.push(userObjectives[i].callObjects);
 
             callLength += userObjectives[i].callObjects.length;
