@@ -24,6 +24,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @notice The list of user objectives stored in a grid format
     CallObject[][] public callGrid;
 
+    /// TODO: accounting logic
+
     /// @notice store addional data needed during execution
     bytes32[] public mevTimeDataKeyList;
     mapping(bytes32 => bytes) public mevTimeDataStore;
@@ -32,6 +34,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     mapping(bytes32 => uint256[]) public callObjIndices;
 
     /// @notice stores the return values of callObjs to be used by other dependend CallObjs
+    bytes[] public callObjReturnKeys;
     mapping(bytes => bytes) public callObjReturn;
 
     /// @dev Error thrown when there is not enough Ether left
@@ -52,6 +55,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @dev Error thrown when the call position of the incoming call is not as expected.
     /// @dev Selector 0xd2c5d316
     error CallPositionFailed(CallObject);
+    /// @dev Error thrown when a signature verification fails due to mismatch between recovered signer and expected signer
+    /// @dev Selector 0x8beed7e0
+    /// @param recoveredAddress The address recovered from the signature
+    /// @param signer The expected signer address
+    error UnauthorisedSigner(address recoveredAddress, address signer);
 
     // event Tip(address indexed from, address indexed to, uint256 amount);
 
@@ -133,6 +141,21 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
+    function getMessageHash(UserObjective memory userObj) public pure returns(bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                "\x19Ethereum Signed Message:\n32",
+                keccak256(
+                    abi.encode(
+                        userObj.nonce,
+                        userObj.sender,
+                        keccak256(abi.encode(userObj.callObjects))
+                    )
+                )
+            )
+        );
+    }
+
     function _setupExecutionData(
         UserObjective[] memory userObjectives,
         bytes[] memory signatures,
@@ -167,7 +190,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
             _executeAndVerifyCall(callGrid[u_index][c_index], returnValues[index]);
         }
 
-        // _cleanUpStorage(); TODO: clean non transient stores
+        // Clean up all state variables created during execution
+        _cleanUpStorage();
         emit VerifyStxn();
     }
 
@@ -193,13 +217,14 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
 
             // store returned values if exposed for use by other CallObjs
             if (callObj.exposeReturn) {
-                callObjReturn[abi.encode(callObj)] = returnFromExecution;
+                bytes memory key = abi.encode(callObj);
+                callObjReturn[key] = returnFromExecution;
+                callObjReturnKeys.push(key);
             }
         }
     }
 
     /// @notice Sets the index of the currently executing call.
-    /// @dev This function should only be called while a call in deferredCalls is being executed.
     function _setCurrentlyExecutingCallIndex(uint256 callIndex) internal {
         uint256 slot = uint256(EXECUTING_CALL_INDEX_SLOT);
         assembly ("memory-safe") {
@@ -228,6 +253,44 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         return abi.decode(encodedValue, (uint256[]));
     }
 
+    function _cleanUpStorage() internal {
+        _cleanUpMEVTimeData();
+        _cleanUpCallIndices(); 
+        _cleanUpCallReturns();
+    }
+
+    function _cleanUpMEVTimeData() internal {
+        uint256 keyListLength = mevTimeDataKeyList.length;
+        if (keyListLength > 0) {
+            for (uint256 i; i < keyListLength; i++) {
+                bytes32 key = mevTimeDataKeyList[i];
+                delete mevTimeDataStore[key];
+            }
+            delete mevTimeDataKeyList;
+        }
+    }
+
+    function _cleanUpCallIndices() internal {
+        if(callObjIndicesSet) {
+            for (uint256 u_index; u_index < callGrid.length; u_index++) {
+                for (uint256 c_index; c_index < callGrid[u_index].length; c_index++) {
+                    delete callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))];
+                }
+            }
+            callObjIndicesSet = false;
+        }
+    }
+
+    function _cleanUpCallReturns() internal {
+        uint256 keyListLength = callObjReturnKeys.length;
+        if (keyListLength > 0) {
+            for (uint256 i; i < keyListLength; i++) {
+                delete callObjReturn[callObjReturnKeys[i]];
+            }
+            delete callObjReturnKeys;
+        }
+    }
+
     /// @notice Populates the mevTimeDataStore with a list of key-value pairs
     /// @param mevTimeData The abi-encoded list of (bytes32, bytes32) key-value pairs
     function _populateMEVDataStore(MEVTimeData[] memory mevTimeData) internal {
@@ -250,8 +313,26 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         emit CallIndicesPopulated();
     }
 
-    function _verifySignatures(UserObjective memory userObj, bytes memory signature) internal view {
-        // TODO: check for correctness of the data, revert if false
+    function _verifySignatures(UserObjective memory userObj, bytes memory signature) internal pure {
+        require(signature.length == 65, "Invalid signature length");
+
+        bytes32 messageHash = getMessageHash(userObj);
+
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        assembly {
+            r := mload(add(signature, 32))
+            s := mload(add(signature, 64))
+            v := byte(0, mload(add(signature, 96)))
+        }
+
+        address recoveredAddress = ecrecover(messageHash, v, r, s);
+
+        if (recoveredAddress != userObj.sender) {
+            revert UnauthorisedSigner(recoveredAddress, userObj.sender);
+        }
     }
 
     function _resolveFlatIndex(uint256 flatIndex) internal view returns (uint256, uint256) {
