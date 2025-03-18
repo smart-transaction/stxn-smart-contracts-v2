@@ -8,10 +8,11 @@ struct CallObject {
     uint256 chainId;
     uint256 gas;
     address addr;
-    bool skippable;
-    bool verifiable;
     bytes callvalue;
     bytes returnvalue;
+    bool skippable;
+    bool verifiable;
+    bool exposeReturn;
 }
 
 /// @dev Struct for holding a sequence of call objects and their return values pushed by the user

@@ -31,6 +31,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @notice mapping of callId to call index
     mapping(bytes32 => uint256[]) public callObjIndices;
 
+    /// @notice stores the return values of callObjs to be used by other dependend CallObjs
+    mapping(bytes => bytes) public callObjReturn;
+
     /// @dev Error thrown when there is not enough Ether left
     /// @dev Selector 0x75483b53
     error OutOfEther();
@@ -187,6 +190,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
             if (keccak256(expectedReturn) != keccak256(returnFromExecution)) {
                 revert CallVerificationFailed();
             }
+
+            // store returned values if exposed for use by other CallObjs
+            if (callObj.exposeReturn) {
+                callObjReturn[abi.encode(callObj)] = returnFromExecution;
+            }
         }
     }
 
@@ -225,7 +233,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     function _populateMEVDataStore(MEVTimeData[] memory mevTimeData) internal {
         uint256 len = mevTimeData.length;
         for (uint256 i; i < len; i++) {
-            mevTimeDataKeyList.push(mevTimeData[i].key); // TODO: check if we will need this when using transient storage
+            mevTimeDataKeyList.push(mevTimeData[i].key); // TODO: clear after execution
             mevTimeDataStore[mevTimeData[i].key] = mevTimeData[i].value;
         }
     }
