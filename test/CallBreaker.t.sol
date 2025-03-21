@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BSL-1.
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import "../src/CallBreaker.sol";
-import {Counter} from "../test/exampleContracts/Counter.sol";
+import {CallObject, UserObjective, MEVTimeData, CallBreaker} from "src/CallBreaker.sol";
+import {Counter} from "test/exampleContracts/Counter.sol";
 
 contract CallBreakerTest is Test {
     CallBreaker public callBreaker;
@@ -49,71 +49,74 @@ contract CallBreakerTest is Test {
         callBreaker.deposit{value: amount}();
     }
 
-    function _prepareExecuteAndVerifyInputs()
+    function testExecuteAndVerify() public {
+        (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        ) = _prepareInputsForCounter(3); // returns 3 values for each array
+
+        uint256[] memory orderOfExecution = new uint256[](3);
+        orderOfExecution[0] = 2;
+        orderOfExecution[1] = 0;
+        orderOfExecution[2] = 1;
+
+        vm.prank(solver);
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+    }
+
+    function _prepareInputsForCounter(uint256 numValues)
         internal
         view
         returns (
             UserObjective[] memory userObjs,
             bytes[] memory signatures,
-            bytes[] memory returnValues,
-            uint256[] memory orderOfExecution,
-            MEVTimeData[] memory mevData
+            bytes[] memory returnValues
         )
     {
-        uint256 currentCounterValue = counter.counter();
-        uint256 expectedReturnValue = currentCounterValue + 1;
         CallObject[] memory callObjs = new CallObject[](1);
 
         callObjs[0] = CallObject({
-            salt: 1,
-            amount: 0,
-            gas: 100000,
-            addr: address(counter),
-            callvalue: abi.encodeWithSignature("incrementCounter()"),
-            returnvalue: abi.encode(expectedReturnValue),
-            skippable: false,
-            verifiable: true,
-            exposeReturn: false
-        });
+                        salt: 1,
+                        amount: 0,
+                        gas: 100000,
+                        addr: address(counter),
+                        callvalue: abi.encodeWithSignature("incrementCounter()"),
+                        returnvalue: "",
+                        skippable: false,
+                        verifiable: true,
+                        exposeReturn: false
+                    });
 
-        userObjs = new UserObjective[](1);
-        userObjs[0] = UserObjective({
-            nonce: 1,
-            sender: user,
-            tip: 0,
-            chainId: 1,
-            maxFeePerGas: 1 gwei,
-            maxPriorityFeePerGas: 1 gwei,
-            callObjects: callObjs
-        });
+        userObjs = new UserObjective[](numValues);
+        signatures = new bytes[](numValues);
+        returnValues = new bytes[](numValues);
 
-        bytes32 messageHash = callBreaker.getMessageHash(userObjs[0]);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, messageHash);
-        signatures = new bytes[](1);
-        signatures[0] = abi.encodePacked(r, s, v);
+        for(uint256 i; i < numValues; i++) {
+            uint256 expectedReturnValue = i + 1;
 
-        returnValues = new bytes[](1);
-        returnValues[0] = "";
+            userObjs[i] = UserObjective({
+                nonce: i,
+                sender: user,
+                tip: 0,
+                chainId: 1,
+                maxFeePerGas: 1 gwei,
+                maxPriorityFeePerGas: 1 gwei,
+                callObjects: callObjs
+            });
 
-        orderOfExecution = new uint256[](1);
-        orderOfExecution[0] = 0;
-
-        mevData = new MEVTimeData[](1);
-        mevData[0] = MEVTimeData({key: keccak256(abi.encode(0)), value: abi.encode(0)});
-
-        return (userObjs, signatures, returnValues, orderOfExecution, mevData);
+            bytes32 messageHash = callBreaker.getMessageHash(userObjs[i]);
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, messageHash);
+            signatures[i] = abi.encodePacked(r, s, v);
+            returnValues[i] = abi.encode(expectedReturnValue);
+        }
+        
+        return (userObjs, signatures, returnValues);
     }
 
-    function testExecuteAndVerify() public {
-        (
-            UserObjective[] memory userObjs,
-            bytes[] memory signatures,
-            bytes[] memory returnValues,
-            uint256[] memory orderOfExecution,
-            MEVTimeData[] memory mevData
-        ) = _prepareExecuteAndVerifyInputs();
-
-        vm.prank(user);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, mevData);
-    }
+    // function _prepareMEVData() internal pure returns (MEVTimeData[] memory) {
+    //     MEVTimeData[] memory mevData = new MEVTimeData[](1);
+    //     mevData[0] = MEVTimeData({key: keccak256(abi.encode(0)), value: abi.encode(0)});
+    //     return mevData;
+    // }
 }
