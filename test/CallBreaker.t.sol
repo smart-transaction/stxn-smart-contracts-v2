@@ -70,8 +70,8 @@ contract CallBreakerTest is Test {
 
         uint256[] memory orderOfExecution = new uint256[](3);
         orderOfExecution[0] = 2;
-        orderOfExecution[1] = 0;
-        orderOfExecution[2] = 1;
+        orderOfExecution[1] = 1;
+        orderOfExecution[2] = 0;
 
         UserObjective memory userObj = userObjs[0];
 
@@ -102,15 +102,15 @@ contract CallBreakerTest is Test {
         returnValues = new bytes[](numValues);
 
         for (uint256 i; i < numValues; i++) {
-            bytes memory expectedReturnValue = abi.encode(i + 1);
             CallObject[] memory callObjs = new CallObject[](1);
 
             if (userReturn) {
+                bytes memory expectedReturnValue = abi.encode((3 - i)); // because the order of execution is inverted
                 callObjs[0] = _buildCallObject(address(counter), "incrementCounter()", expectedReturnValue);
                 returnValues[i] = abi.encode(numValues + 1); // incorrect value given by solver to check if user return is given preference
             } else {
                 callObjs[0] = _buildCallObject(address(counter), "incrementCounter()", "");
-                returnValues[i] = expectedReturnValue;
+                returnValues[i] = abi.encode(i + 1);
             }
 
             userObjs[i] = _buildUserObjective(0, users[i], callObjs);
