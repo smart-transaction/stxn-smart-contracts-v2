@@ -256,7 +256,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
             // store returned values if exposed for use by other CallObjs
             if (callObj.exposeReturn) {
                 bytes memory key = abi.encode(callObj);
-                callObjReturn[key] = returnFromExecution;
+                callObjReturn[key] = returnFromExecution; // TODO Save using tstore
                 callObjReturnKeys.push(key);
             }
         }
@@ -295,7 +295,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         uint256 userCount = userObjs.length;
         for (uint256 i; i < userCount; i++) {
             // Calculate cost for this user's gas usage and tip
-            uint256 userCost = gasPerUser[i] * block.basefee;
+            uint256 userCost = gasPerUser[i] * block.basefee; // TODO use updated calculation for gas fees
             userCost += userObjs[i].tip;
 
             // Transfer cost from user's balance to solver
