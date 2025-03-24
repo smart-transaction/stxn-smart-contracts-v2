@@ -52,7 +52,10 @@ contract CallBreakerTest is Test {
         uint256 userBalanceAfter = users[0].balance;
         uint256 callBreakerBalanceAfter = address(callBreaker).balance;
 
-        assertEq(callBreaker.senderBalances(users[0]), userBalanceBefore + amount);
+        assertEq(
+            callBreaker.senderBalances(users[0]),
+            userBalanceBefore + amount
+        );
         assertEq(userBalanceBefore - userBalanceAfter, amount);
         assertEq(callBreakerBalanceAfter - callBreakerBalanceBefore, amount);
     }
@@ -65,23 +68,33 @@ contract CallBreakerTest is Test {
     }
 
     function testExecuteAndVerifyWithUserReturns() public {
-        (UserObjective[] memory userObjs, bytes[] memory signatures, bytes[] memory returnValues) =
-            _prepareInputsForCounter(3, true); // returns 3 values for each array
+        (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        ) = _prepareInputsForCounter(3, true); // returns 3 values for each array
 
         uint256[] memory orderOfExecution = new uint256[](3);
         orderOfExecution[0] = 2;
         orderOfExecution[1] = 1;
         orderOfExecution[2] = 0;
 
-        UserObjective memory userObj = userObjs[0];
-
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(
+            userObjs,
+            signatures,
+            returnValues,
+            orderOfExecution,
+            new MEVTimeData[](0)
+        );
     }
 
     function testExecuteAndVerifyWithSolverReturns() public {
-        (UserObjective[] memory userObjs, bytes[] memory signatures, bytes[] memory returnValues) =
-            _prepareInputsForCounter(3, false); // returns 3 values for each array
+        (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        ) = _prepareInputsForCounter(3, false); // returns 3 values for each array
 
         uint256[] memory orderOfExecution = new uint256[](3);
         orderOfExecution[0] = 2;
@@ -89,13 +102,156 @@ contract CallBreakerTest is Test {
         orderOfExecution[2] = 1;
 
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(
+            userObjs,
+            signatures,
+            returnValues,
+            orderOfExecution,
+            new MEVTimeData[](0)
+        );
     }
 
-    function _prepareInputsForCounter(uint256 numValues, bool userReturn)
+    function testExecuteWithInvalidSignatureLength() public {
+        (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        ) = _prepareInputsForCounterWithInvalidSignatureLength(3, false); // Generates incorrect signatures
+
+        uint256[] memory orderOfExecution = new uint256[](3);
+        orderOfExecution[0] = 2;
+        orderOfExecution[1] = 0;
+        orderOfExecution[2] = 1;
+
+        vm.expectRevert("Invalid signature length"); // Expect failure due to bad signature format
+        vm.prank(solver);
+        callBreaker.executeAndVerify(
+            userObjs,
+            signatures,
+            returnValues,
+            orderOfExecution,
+            new MEVTimeData[](0)
+        );
+    }
+
+    function testExecuteWithInvalidSignatureSigner() public {
+        (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        ) = _prepareInputsForCounterWithInvalidSignatureSigner(3, false); // Generates incorrect signatures
+
+        uint256[] memory orderOfExecution = new uint256[](3);
+        orderOfExecution[0] = 0;
+        orderOfExecution[1] = 1;
+        orderOfExecution[2] = 2;
+
+        bytes memory expectedError = abi.encodeWithSelector(
+            CallBreaker.UnauthorisedSigner.selector,
+            user3, // Recovered address from invalidSignature
+            user // Expected sender (userObj.sender)
+        );
+        vm.expectRevert(expectedError); // Expect failure due to bad signature format
+        vm.prank(solver);
+        callBreaker.executeAndVerify(
+            userObjs,
+            signatures,
+            returnValues,
+            orderOfExecution,
+            new MEVTimeData[](0)
+        );
+    }
+
+    function testExecuteWithInvalidReturnValuesLength() public {
+        (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        ) = _prepareInputsForCounterWithInvalidReturnValuesLength(3, false); // Generates incorrect signatures
+
+        uint256[] memory orderOfExecution = new uint256[](3);
+        orderOfExecution[0] = 2;
+        orderOfExecution[1] = 0;
+        orderOfExecution[2] = 1;
+
+        bytes memory expectedError = abi.encodeWithSelector(
+            CallBreaker.LengthMismatch.selector
+        );
+        vm.expectRevert(expectedError); // Expect failure due to bad signature format
+        vm.prank(solver);
+        callBreaker.executeAndVerify(
+            userObjs,
+            signatures,
+            returnValues,
+            orderOfExecution,
+            new MEVTimeData[](0)
+        );
+    }
+
+    function testExecuteWithInvalidContractCall() public {
+        (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        ) = _prepareInputsForCounterWithInvalidContractCall(3, false);
+
+        uint256[] memory orderOfExecution = new uint256[](3);
+        orderOfExecution[0] = 2;
+        orderOfExecution[1] = 0;
+        orderOfExecution[2] = 1;
+
+        bytes memory expectedError = abi.encodeWithSelector(
+            CallBreaker.CallFailed.selector
+        );
+        vm.startPrank(solver);
+        vm.expectRevert(expectedError); // Expect failure due to bad signature format
+        callBreaker.executeAndVerify(
+            userObjs,
+            signatures,
+            returnValues,
+            orderOfExecution,
+            new MEVTimeData[](0)
+        );
+        vm.stopPrank();
+    }
+
+    function testExecuteWithInvalidOrderOfExecution() public {
+        (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        ) = _prepareInputsForCounter(3, false);
+
+        uint256[] memory orderOfExecution = new uint256[](3);
+        orderOfExecution[0] = 5;
+        orderOfExecution[1] = 0;
+        orderOfExecution[2] = 1;
+
+        bytes memory expectedError = abi.encodeWithSelector(
+            CallBreaker.FlatIndexOutOfBounds.selector
+        );
+        vm.expectRevert(expectedError); // Expect failure due to bad signature format
+        vm.prank(solver);
+        callBreaker.executeAndVerify(
+            userObjs,
+            signatures,
+            returnValues,
+            orderOfExecution,
+            new MEVTimeData[](0)
+        );
+    }
+
+    function _prepareInputsForCounter(
+        uint256 numValues,
+        bool userReturn
+    )
         internal
         view
-        returns (UserObjective[] memory userObjs, bytes[] memory signatures, bytes[] memory returnValues)
+        returns (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        )
     {
         userObjs = new UserObjective[](numValues);
         signatures = new bytes[](numValues);
@@ -105,56 +261,331 @@ contract CallBreakerTest is Test {
             CallObject[] memory callObjs = new CallObject[](1);
 
             if (userReturn) {
-                bytes memory expectedReturnValue = abi.encode((3 - i)); // because the order of execution is inverted
-                callObjs[0] = _buildCallObject(address(counter), "incrementCounter()", expectedReturnValue);
-                returnValues[i] = abi.encode(numValues + 1); // incorrect value given by solver to check if user return is given preference
+                bytes memory expectedReturnValue = abi.encode((3 - i)); // Inverted execution order
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    expectedReturnValue
+                );
+                returnValues[i] = abi.encode(numValues + 1); // Incorrect return value
             } else {
-                callObjs[0] = _buildCallObject(address(counter), "incrementCounter()", "");
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    ""
+                );
                 returnValues[i] = abi.encode(i + 1);
             }
 
             userObjs[i] = _buildUserObjective(0, users[i], callObjs);
-
-            bytes32 messageHash = callBreaker.getMessageHash(userObjs[i]);
-            (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKeys[i], messageHash);
-            signatures[i] = abi.encodePacked(r, s, v);
         }
 
+        signatures = _generateCorrectSignatures(userObjs, numValues);
         return (userObjs, signatures, returnValues);
     }
 
-    function _buildUserObjective(uint256 nonce, address sender, CallObject[] memory callObjs)
-        internal
-        pure
-        returns (UserObjective memory)
-    {
-        return UserObjective({
-            nonce: nonce,
-            sender: sender,
-            tip: 0,
-            chainId: 1,
-            maxFeePerGas: 1 gwei,
-            maxPriorityFeePerGas: 1 gwei,
-            callObjects: callObjs
-        });
-    }
-
-    function _buildCallObject(address contractAddr, string memory funcSignature, bytes memory returnValue)
+    // Generates incorrect signatures (e.g., incorrect length)
+    function _prepareInputsForCounterWithInvalidSignatureLength(
+        uint256 numValues,
+        bool userReturn
+    )
         internal
         view
-        returns (CallObject memory)
+        returns (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        )
     {
-        return CallObject({
-            salt: 1,
-            amount: 0,
-            gas: 100000,
-            addr: contractAddr,
-            callvalue: abi.encodeWithSignature(funcSignature),
-            returnvalue: returnValue,
-            skippable: false,
-            verifiable: true,
-            exposeReturn: false
-        });
+        userObjs = new UserObjective[](numValues);
+        signatures = new bytes[](numValues);
+        returnValues = new bytes[](numValues);
+
+        for (uint256 i; i < numValues; i++) {
+            CallObject[] memory callObjs = new CallObject[](1);
+
+            if (userReturn) {
+                bytes memory expectedReturnValue = abi.encode((3 - i));
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    expectedReturnValue
+                );
+                returnValues[i] = abi.encode(numValues + 1);
+            } else {
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    ""
+                );
+                returnValues[i] = abi.encode(i + 1);
+            }
+
+            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+        }
+
+        signatures = _generateInvalidSignaturesUsingLength(numValues); // Generates bad signatures
+        return (userObjs, signatures, returnValues);
+    }
+
+    function _prepareInputsForCounterWithInvalidSignatureSigner(
+        uint256 numValues,
+        bool userReturn
+    )
+        internal
+        view
+        returns (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        )
+    {
+        userObjs = new UserObjective[](numValues);
+        signatures = new bytes[](numValues);
+        returnValues = new bytes[](numValues);
+
+        for (uint256 i; i < numValues; i++) {
+            CallObject[] memory callObjs = new CallObject[](1);
+
+            if (userReturn) {
+                bytes memory expectedReturnValue = abi.encode((3 - i));
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    expectedReturnValue
+                );
+                returnValues[i] = abi.encode(numValues + 1);
+            } else {
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    ""
+                );
+                returnValues[i] = abi.encode(i + 1);
+            }
+
+            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+        }
+
+        signatures = _generateInvalidSignaturesUsingSigner(userObjs, numValues); // Generates bad signatures
+        return (userObjs, signatures, returnValues);
+    }
+
+    function _prepareInputsForCounterWithInvalidOrderOfExecution(
+        uint256 numValues,
+        bool userReturn
+    )
+        internal
+        view
+        returns (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        )
+    {
+        userObjs = new UserObjective[](numValues);
+        signatures = new bytes[](numValues);
+        returnValues = new bytes[](numValues);
+
+        for (uint256 i; i < numValues; i++) {
+            CallObject[] memory callObjs = new CallObject[](1);
+
+            if (userReturn) {
+                bytes memory expectedReturnValue = abi.encode((3 - i));
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    expectedReturnValue
+                );
+                returnValues[i] = abi.encode(numValues + 1);
+            } else {
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    ""
+                );
+                returnValues[i] = abi.encode(i + 1);
+            }
+
+            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+        }
+
+        signatures = _generateCorrectSignatures(userObjs, numValues);
+        return (userObjs, signatures, returnValues);
+    }
+
+    function _prepareInputsForCounterWithInvalidReturnValuesLength(
+        uint256 numValues,
+        bool userReturn
+    )
+        internal
+        view
+        returns (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        )
+    {
+        userObjs = new UserObjective[](numValues);
+        signatures = new bytes[](numValues);
+        returnValues = new bytes[](numValues + 1);
+
+        for (uint256 i; i < numValues; i++) {
+            CallObject[] memory callObjs = new CallObject[](1);
+
+            if (userReturn) {
+                bytes memory expectedReturnValue = abi.encode((3 - i));
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    expectedReturnValue
+                );
+                returnValues[i] = abi.encode(numValues + 1);
+            } else {
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounter()",
+                    ""
+                );
+                returnValues[i] = abi.encode(i + 1);
+            }
+
+            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+        }
+        returnValues[numValues] = "";
+
+        signatures = _generateCorrectSignatures(userObjs, numValues); // Generates bad signatures
+        return (userObjs, signatures, returnValues);
+    }
+
+    function _prepareInputsForCounterWithInvalidContractCall(
+        uint256 numValues,
+        bool userReturn
+    )
+        internal
+        view
+        returns (
+            UserObjective[] memory userObjs,
+            bytes[] memory signatures,
+            bytes[] memory returnValues
+        )
+    {
+        userObjs = new UserObjective[](numValues);
+        signatures = new bytes[](numValues);
+        returnValues = new bytes[](numValues);
+
+        for (uint256 i; i < numValues; i++) {
+            CallObject[] memory callObjs = new CallObject[](1);
+
+            if (userReturn) {
+                bytes memory expectedReturnValue = abi.encode((3 - i));
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounters()", // Provided wrong function name so that the call will fail
+                    expectedReturnValue
+                );
+                returnValues[i] = abi.encode(numValues + 1);
+            } else {
+                callObjs[0] = _buildCallObject(
+                    address(counter),
+                    "incrementCounters()",
+                    ""
+                );
+                returnValues[i] = abi.encode(i + 1);
+            }
+
+            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+        }
+
+        signatures = _generateCorrectSignatures(userObjs, numValues); // Generates bad signatures
+        return (userObjs, signatures, returnValues);
+    }
+
+    function _generateCorrectSignatures(
+        UserObjective[] memory userObjs,
+        uint256 numUsers
+    ) internal view returns (bytes[] memory) {
+        bytes[] memory signatures = new bytes[](numUsers);
+
+        for (uint256 i; i < numUsers; i++) {
+            bytes32 messageHash = callBreaker.getMessageHash(userObjs[i]);
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+                userPrivateKeys[i],
+                messageHash
+            );
+            signatures[i] = abi.encodePacked(r, s, v);
+        }
+
+        return signatures;
+    }
+
+    function _generateInvalidSignaturesUsingSigner(
+        UserObjective[] memory userObjs,
+        uint256 numUsers
+    ) internal view returns (bytes[] memory) {
+        bytes[] memory signatures = new bytes[](numUsers);
+        bytes32 messageHash;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+        for (uint256 i = 1; i < numUsers; i++) {
+            messageHash = callBreaker.getMessageHash(userObjs[i]);
+            (v, r, s) = vm.sign(userPrivateKeys[i], messageHash);
+            signatures[i] = abi.encodePacked(r, s, v);
+        }
+        messageHash = callBreaker.getMessageHash(userObjs[0]);
+        (v, r, s) = vm.sign(userPrivateKeys[2], messageHash);
+        signatures[0] = abi.encodePacked(r, s, v);
+
+        return signatures;
+    }
+
+    function _generateInvalidSignaturesUsingLength(
+        uint256 numUsers
+    ) internal pure returns (bytes[] memory) {
+        bytes[] memory signatures = new bytes[](numUsers);
+
+        for (uint256 i; i < numUsers; i++) {
+            signatures[i] = abi.encodePacked(bytes32(0), bytes32(0)); // Incorrect length (missing v)
+        }
+
+        return signatures;
+    }
+
+    function _buildUserObjective(
+        uint256 nonce,
+        address sender,
+        CallObject[] memory callObjs
+    ) internal pure returns (UserObjective memory) {
+        return
+            UserObjective({
+                nonce: nonce,
+                sender: sender,
+                tip: 0,
+                chainId: 1,
+                maxFeePerGas: 1 gwei,
+                maxPriorityFeePerGas: 1 gwei,
+                callObjects: callObjs
+            });
+    }
+
+    function _buildCallObject(
+        address contractAddr,
+        string memory funcSignature,
+        bytes memory returnValue
+    ) internal pure returns (CallObject memory) {
+        return
+            CallObject({
+                salt: 1,
+                amount: 0,
+                gas: 100000,
+                addr: contractAddr,
+                callvalue: abi.encodeWithSignature(funcSignature),
+                returnvalue: returnValue,
+                skippable: false,
+                verifiable: true,
+                exposeReturn: false
+            });
     }
 
     // function _prepareMEVData() internal pure returns (MEVTimeData[] memory) {
