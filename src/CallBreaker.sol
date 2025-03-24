@@ -295,7 +295,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         uint256 userCount = userObjs.length;
         for (uint256 i; i < userCount; i++) {
             // Calculate cost for this user's gas usage and tip
-            uint256 userCost = gasPerUser[i] * block.basefee; // TODO use updated calculation for gas fees
+            uint256 userCost = gasPerUser[i] * _effectiveGasPrice(userObjs[i]);
             userCost += userObjs[i].tip;
 
             // Transfer cost from user's balance to solver
@@ -388,7 +388,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    function _effectiveGasPrice(UserObjective calldata userObj) internal view returns (uint256) {
+    function _effectiveGasPrice(UserObjective memory userObj) internal view returns (uint256) {
         uint256 maxFee = userObj.maxFeePerGas;
         uint256 priority = userObj.maxPriorityFeePerGas;
         return _min(maxFee, block.basefee + priority);
