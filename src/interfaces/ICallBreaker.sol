@@ -25,6 +25,8 @@ struct CallObject {
 
 /// @dev Struct for holding a sequence of call objects and their return values pushed by the user
 struct UserObjective {
+    /// @notice App Id associated to an application to allow solvers to pick relevant objectives
+    uint256 appId;
     /// @notice Nonce to prevent replay attacks
     uint256 nonce;
     /// @notice Address of the user who submitted this objective

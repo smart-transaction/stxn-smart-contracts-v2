@@ -501,6 +501,7 @@ contract CallBreakerTest is Test {
         returns (UserObjective memory)
     {
         return UserObjective({
+            appId: 1,
             nonce: nonce,
             sender: sender,
             tip: 0,
@@ -517,6 +518,7 @@ contract CallBreakerTest is Test {
         returns (UserObjective memory)
     {
         return UserObjective({
+            appId: 1,
             nonce: nonce,
             sender: sender,
             tip: 0,
