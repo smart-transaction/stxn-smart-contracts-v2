@@ -87,11 +87,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     event CallIndicesPopulated();
 
     event UserObjectiveData(
-    uint256 indexed appId,
-    uint256 indexed chainId,
-    uint256 blockNumber,
-    UserObjective userObjective,
-    AdditionalData[] additionalData
+        uint256 indexed appId,
+        uint256 indexed chainId,
+        uint256 blockNumber,
+        UserObjective userObjective,
+        AdditionalData[] additionalData
     );
 
     /// @notice Initializes the contract; sets the initial portal status to closed
@@ -161,17 +161,12 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    /// Emits a ClaimData event that logs the details to be used in Vamp on Solana.
-    function emitUserObjective(
-        UserObjective calldata _userObjective,
-        AdditionalData[] calldata _additionalData
-    ) external {        
+    /// Emits a UserObjectiveData event
+    function signalUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
+        external
+    {
         emit UserObjectiveData(
-            _userObjective.appId,
-            _userObjective.chainId,
-            block.number,
-            _userObjective,
-            _additionalData
+            _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
         );
     }
 

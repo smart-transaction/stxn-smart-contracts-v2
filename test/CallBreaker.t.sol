@@ -217,6 +217,18 @@ contract CallBreakerTest is Test {
         callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
+    function testSignalUserObjective() public {
+        (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
+            _prepareInputsForSignalUserObjective();
+
+        vm.prank(solver);
+        vm.expectEmit(true, true, false, true);
+        emit CallBreaker.UserObjectiveData(
+            userObjective.appId, userObjective.chainId, block.number, userObjective, additionalData
+        );
+        callBreaker.signalUserObjective(userObjective, additionalData);
+    }
+
     function _prepareInputsForCounter(uint256 numValues, bool userReturn)
         internal
         view
@@ -243,6 +255,31 @@ contract CallBreakerTest is Test {
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
         return (userObjs, signatures, returnValues);
+    }
+
+    function _prepareInputsForSignalUserObjective()
+        internal
+        view
+        returns (UserObjective memory, AdditionalData[] memory)
+    {
+        CallObject[] memory callObjs = new CallObject[](1);
+        bytes memory expectedReturnValue = abi.encode("");
+        callObjs[0] = _buildCallObject(address(0), "claim()", expectedReturnValue);
+
+        UserObjective memory userObjective = _buildCrossChainUserObjective(101, 0, users[0], callObjs); // Solana chain ID: 101
+
+        AdditionalData[] memory additionalData = new AdditionalData[](3);
+        additionalData[0] = AdditionalData({key: keccak256(abi.encode("amount")), value: abi.encode(10e18)});
+        additionalData[1] = AdditionalData({
+            key: keccak256(abi.encode("SolanaContractAddress")),
+            value: abi.encode(keccak256(abi.encode("0x1")))
+        });
+        additionalData[1] = AdditionalData({
+            key: keccak256(abi.encode("SolanaWalletAddress")),
+            value: abi.encode(keccak256(abi.encode("0x2")))
+        });
+
+        return (userObjective, additionalData);
     }
 
     // Generates incorrect signatures (e.g., incorrect length)
@@ -506,6 +543,23 @@ contract CallBreakerTest is Test {
             sender: sender,
             tip: 0,
             chainId: 1,
+            maxFeePerGas: 1 gwei,
+            maxPriorityFeePerGas: 1 gwei,
+            callObjects: callObjs
+        });
+    }
+
+    function _buildCrossChainUserObjective(uint256 chainId, uint256 nonce, address sender, CallObject[] memory callObjs)
+        internal
+        pure
+        returns (UserObjective memory)
+    {
+        return UserObjective({
+            appId: 1,
+            nonce: nonce,
+            sender: sender,
+            tip: 0,
+            chainId: chainId,
             maxFeePerGas: 1 gwei,
             maxPriorityFeePerGas: 1 gwei,
             callObjects: callObjs
