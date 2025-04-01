@@ -86,7 +86,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @notice Emitted when the call indices are populated
     event CallIndicesPopulated();
 
-    event UserObjectiveData(
+    event UserObjectivePushed(
         uint256 indexed appId,
         uint256 indexed chainId,
         uint256 blockNumber,
@@ -161,11 +161,10 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    /// Emits a UserObjectiveData event
-    function signalUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
+    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
         external
     {
-        emit UserObjectiveData(
+        emit UserObjectivePushed(
             _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
         );
     }

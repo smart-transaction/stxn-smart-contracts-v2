@@ -223,10 +223,10 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectEmit(true, true, false, true);
-        emit CallBreaker.UserObjectiveData(
+        emit CallBreaker.UserObjectivePushed(
             userObjective.appId, userObjective.chainId, block.number, userObjective, additionalData
         );
-        callBreaker.signalUserObjective(userObjective, additionalData);
+        callBreaker.pushUserObjective(userObjective, additionalData);
     }
 
     function _prepareInputsForCounter(uint256 numValues, bool userReturn)

@@ -57,6 +57,6 @@ interface ICallBreaker {
         AdditionalData[] calldata _mevTimeData
     ) external payable;
 
-    function signalUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
+    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
         external;
 }
