@@ -43,7 +43,7 @@ struct UserObjective {
     CallObject[] callObjects;
 }
 
-struct MEVTimeData {
+struct AdditionalData {
     bytes32 key;
     bytes value;
 }
@@ -54,6 +54,8 @@ interface ICallBreaker {
         bytes[] calldata _signatures,
         bytes[] calldata _returnsBytes,
         uint256[] calldata _orderOfExecution,
-        MEVTimeData[] calldata _mevTimeData
+        AdditionalData[] calldata _mevTimeData
     ) external payable;
+
+    function emitUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData) external;
 }
