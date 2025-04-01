@@ -274,7 +274,7 @@ contract CallBreakerTest is Test {
             key: keccak256(abi.encode("SolanaContractAddress")),
             value: abi.encode(keccak256(abi.encode("0x1")))
         });
-        additionalData[1] = AdditionalData({
+        additionalData[2] = AdditionalData({
             key: keccak256(abi.encode("SolanaWalletAddress")),
             value: abi.encode(keccak256(abi.encode("0x2")))
         });
