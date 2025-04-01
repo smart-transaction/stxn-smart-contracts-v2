@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import {CallObject, UserObjective, MEVTimeData, CallBreaker} from "src/CallBreaker.sol";
+import {CallObject, UserObjective, AdditionalData, CallBreaker} from "src/CallBreaker.sol";
 import {Counter} from "test/exampleContracts/Counter.sol";
 import {EventEmitter} from "test/exampleContracts/EventEmitter.sol";
 
@@ -87,7 +87,7 @@ contract CallBreakerTest is Test {
         orderOfExecution[2] = 0;
 
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
     function testExecuteAndVerifyWithSolverReturns() public {
@@ -100,7 +100,7 @@ contract CallBreakerTest is Test {
         orderOfExecution[2] = 1;
 
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
     function testExecuteAndVerifyWithInsufficientUserBalance() public {
@@ -117,7 +117,7 @@ contract CallBreakerTest is Test {
         vm.prank(solver);
         vm.expectRevert(expectedError);
 
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
     function testExecuteAndVerifyWithInvalidUserReturnValues() public {
@@ -133,7 +133,7 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
     function testExecuteWithInvalidSignatureLength() public {
@@ -147,7 +147,7 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert("Invalid signature length"); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
     function testExecuteWithInvalidSignatureSigner() public {
@@ -167,7 +167,7 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
     function testExecuteWithInvalidReturnValuesLength() public {
@@ -183,7 +183,7 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
     function testExecuteWithInvalidContractCall() public {
@@ -198,7 +198,7 @@ contract CallBreakerTest is Test {
         bytes memory expectedError = abi.encodeWithSelector(CallBreaker.CallFailed.selector);
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
     function testExecuteWithInvalidOrderOfExecution() public {
@@ -214,7 +214,19 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new MEVTimeData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+    }
+
+    function testSignalUserObjective() public {
+        (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
+            _prepareInputsForSignalUserObjective();
+
+        vm.prank(solver);
+        vm.expectEmit(true, true, false, true);
+        emit CallBreaker.UserObjectivePushed(
+            userObjective.appId, userObjective.chainId, block.number, userObjective, additionalData
+        );
+        callBreaker.pushUserObjective(userObjective, additionalData);
     }
 
     function _prepareInputsForCounter(uint256 numValues, bool userReturn)
@@ -243,6 +255,31 @@ contract CallBreakerTest is Test {
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
         return (userObjs, signatures, returnValues);
+    }
+
+    function _prepareInputsForSignalUserObjective()
+        internal
+        view
+        returns (UserObjective memory, AdditionalData[] memory)
+    {
+        CallObject[] memory callObjs = new CallObject[](1);
+        bytes memory expectedReturnValue = abi.encode("");
+        callObjs[0] = _buildCallObject(address(0), "claim()", expectedReturnValue);
+
+        UserObjective memory userObjective = _buildCrossChainUserObjective(101, 0, users[0], callObjs); // Solana chain ID: 101
+
+        AdditionalData[] memory additionalData = new AdditionalData[](3);
+        additionalData[0] = AdditionalData({key: keccak256(abi.encode("amount")), value: abi.encode(10e18)});
+        additionalData[1] = AdditionalData({
+            key: keccak256(abi.encode("SolanaContractAddress")),
+            value: abi.encode(keccak256(abi.encode("0x1")))
+        });
+        additionalData[2] = AdditionalData({
+            key: keccak256(abi.encode("SolanaWalletAddress")),
+            value: abi.encode(keccak256(abi.encode("0x2")))
+        });
+
+        return (userObjective, additionalData);
     }
 
     // Generates incorrect signatures (e.g., incorrect length)
@@ -512,6 +549,23 @@ contract CallBreakerTest is Test {
         });
     }
 
+    function _buildCrossChainUserObjective(uint256 chainId, uint256 nonce, address sender, CallObject[] memory callObjs)
+        internal
+        pure
+        returns (UserObjective memory)
+    {
+        return UserObjective({
+            appId: 1,
+            nonce: nonce,
+            sender: sender,
+            tip: 0,
+            chainId: chainId,
+            maxFeePerGas: 1 gwei,
+            maxPriorityFeePerGas: 1 gwei,
+            callObjects: callObjs
+        });
+    }
+
     function _buildUserObjectiveWithInsufficientUserBalance(uint256 nonce, address sender, CallObject[] memory callObjs)
         internal
         pure
@@ -547,9 +601,9 @@ contract CallBreakerTest is Test {
         });
     }
 
-    // function _prepareMEVData() internal pure returns (MEVTimeData[] memory) {
-    //     MEVTimeData[] memory mevData = new MEVTimeData[](1);
-    //     mevData[0] = MEVTimeData({key: keccak256(abi.encode(0)), value: abi.encode(0)});
+    // function _prepareMEVData() internal pure returns (AdditionalData[] memory) {
+    //     AdditionalData[] memory mevData = new AdditionalData[](1);
+    //     mevData[0] = AdditionalData({key: keccak256(abi.encode(0)), value: abi.encode(0)});
     //     return mevData;
     // }
 }

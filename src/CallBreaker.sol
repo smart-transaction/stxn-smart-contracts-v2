@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSL-1.
 pragma solidity 0.8.28;
 
-import {ICallBreaker, CallObject, UserObjective, MEVTimeData} from "src/interfaces/ICallBreaker.sol";
+import {ICallBreaker, CallObject, UserObjective, AdditionalData} from "src/interfaces/ICallBreaker.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
@@ -30,8 +30,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     mapping(address => uint256) public senderBalances;
 
     /// @notice store addional data needed during execution
-    bytes32[] public mevTimeDataKeyList;
-    mapping(bytes32 => bytes) public mevTimeDataStore;
+    bytes32[] public additionalDataKeyList;
+    mapping(bytes32 => bytes) public additionalDataStore;
 
     /// @notice mapping of callId to call index
     mapping(bytes32 => uint256[]) public callObjIndices;
@@ -86,6 +86,14 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @notice Emitted when the call indices are populated
     event CallIndicesPopulated();
 
+    event UserObjectivePushed(
+        uint256 indexed appId,
+        uint256 indexed chainId,
+        uint256 blockNumber,
+        UserObjective userObjective,
+        AdditionalData[] additionalData
+    );
+
     /// @notice Initializes the contract; sets the initial portal status to closed
     constructor() {}
 
@@ -120,7 +128,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         bytes[] calldata _signatures,
         bytes[] calldata _returnsBytes,
         uint256[] calldata _orderOfExecution,
-        MEVTimeData[] calldata _mevTimeData
+        AdditionalData[] calldata _mevTimeData
     ) external payable nonReentrant {
         uint256 callLength =
             _setupExecutionData(_userObjectives, _signatures, _returnsBytes, _orderOfExecution, _mevTimeData);
@@ -151,6 +159,14 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
                 break;
             }
         }
+    }
+
+    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
+        external
+    {
+        emit UserObjectivePushed(
+            _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
+        );
     }
 
     /// @notice Fetches the index of a given CallObject from the callIndex store
@@ -194,7 +210,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         bytes[] memory signatures,
         bytes[] memory returnValues,
         uint256[] memory orderOfExecution,
-        MEVTimeData[] memory mevTimeData
+        AdditionalData[] memory mevTimeData
     ) internal returns (uint256 callLength) {
         uint256 len = userObjectives.length;
 
@@ -211,7 +227,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
 
         _storeOrderOfExecution(orderOfExecution);
-        _populateMEVDataStore(mevTimeData);
+        _populateAdditionalDataStore(mevTimeData);
     }
 
     function _executeAndVerifyCalls(
@@ -307,19 +323,19 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     }
 
     function _cleanUpStorage() internal {
-        _cleanUpMEVTimeData();
+        _cleanUpAdditionalData();
         _cleanUpCallIndices();
         _cleanUpCallReturns();
     }
 
-    function _cleanUpMEVTimeData() internal {
-        uint256 keyListLength = mevTimeDataKeyList.length;
+    function _cleanUpAdditionalData() internal {
+        uint256 keyListLength = additionalDataKeyList.length;
         if (keyListLength > 0) {
             for (uint256 i; i < keyListLength; i++) {
-                bytes32 key = mevTimeDataKeyList[i];
-                delete mevTimeDataStore[key];
+                bytes32 key = additionalDataKeyList[i];
+                delete additionalDataStore[key];
             }
-            delete mevTimeDataKeyList;
+            delete additionalDataKeyList;
         }
     }
 
@@ -344,13 +360,13 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    /// @notice Populates the mevTimeDataStore with a list of key-value pairs
+    /// @notice Populates the additionalDataStore with a list of key-value pairs
     /// @param mevTimeData The abi-encoded list of (bytes32, bytes32) key-value pairs
-    function _populateMEVDataStore(MEVTimeData[] memory mevTimeData) internal {
+    function _populateAdditionalDataStore(AdditionalData[] memory mevTimeData) internal {
         uint256 len = mevTimeData.length;
         for (uint256 i; i < len; i++) {
-            mevTimeDataKeyList.push(mevTimeData[i].key); // TODO: clear after execution
-            mevTimeDataStore[mevTimeData[i].key] = mevTimeData[i].value;
+            additionalDataKeyList.push(mevTimeData[i].key); // TODO: clear after execution
+            additionalDataStore[mevTimeData[i].key] = mevTimeData[i].value;
         }
     }
 
