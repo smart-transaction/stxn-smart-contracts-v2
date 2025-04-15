@@ -26,11 +26,9 @@ struct CallObject {
 /// @dev Struct for holding a sequence of call objects and their return values pushed by the user
 struct UserObjective {
     /// @notice App Id associated to an application to allow solvers to pick relevant objectives
-    uint256 appId;
+    bytes appId;
     /// @notice Nonce to prevent replay attacks
     uint256 nonce;
-    /// @notice Address of the user who submitted this objective
-    address sender;
     /// @notice Tip amount to be paid to the solver
     uint256 tip;
     /// @notice Chain ID where this call should be executed
@@ -39,6 +37,8 @@ struct UserObjective {
     uint256 maxFeePerGas;
     /// @notice Maximum priority fee per gas the user is willing to pay for this transaction
     uint256 maxPriorityFeePerGas;
+    /// @notice Address of the user who submitted this objective
+    address sender;
     /// @notice Array of call objects to be executed for this user
     CallObject[] callObjects;
 }
@@ -57,6 +57,8 @@ interface ICallBreaker {
         AdditionalData[] calldata _mevTimeData
     ) external payable;
 
-    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
-        external;
+    function pushUserObjective(
+        UserObjective calldata _userObjective,
+        AdditionalData[] calldata _additionalData
+    ) external;
 }
