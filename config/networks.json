@@ -25,7 +25,7 @@
             "rpcEnvKey": "POLYGON_AMOY_RPC",
             "chainId": 80002,
             "verifier": "etherscan",
-            "verifierUrl": "https://amoy.polygonscan.com/api",
+            "verifierUrl": "https://api-amoy.polygonscan.com/api",
             "explorerUrl": "https://amoy.polygonscan.com",
             "apiKeyEnv": "POLYGONSCAN_API_KEY"
         }
