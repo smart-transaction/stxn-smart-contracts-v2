@@ -87,7 +87,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     event CallIndicesPopulated();
 
     event UserObjectivePushed(
-        uint256 indexed appId,
+        bytes indexed appId,
         uint256 indexed chainId,
         uint256 blockNumber,
         UserObjective userObjective,
@@ -130,15 +130,26 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         uint256[] calldata _orderOfExecution,
         AdditionalData[] calldata _mevTimeData
     ) external payable nonReentrant {
-        uint256 callLength =
-            _setupExecutionData(_userObjectives, _signatures, _returnsBytes, _orderOfExecution, _mevTimeData);
-        uint256[] memory gasPerUser =
-            _executeAndVerifyCalls(_userObjectives.length, callLength, _orderOfExecution, _returnsBytes);
+        uint256 callLength = _setupExecutionData(
+            _userObjectives,
+            _signatures,
+            _returnsBytes,
+            _orderOfExecution,
+            _mevTimeData
+        );
+        uint256[] memory gasPerUser = _executeAndVerifyCalls(
+            _userObjectives.length,
+            callLength,
+            _orderOfExecution,
+            _returnsBytes
+        );
         _collectCostOfExecution(_userObjectives, gasPerUser);
         emit VerifyStxn();
     }
 
-    function expectFutureCall(CallObject memory callObj) external returns (bool isExecutedInFuture) {
+    function expectFutureCall(
+        CallObject memory callObj
+    ) external returns (bool isExecutedInFuture) {
         uint256[] memory callIndices = getCallIndex(callObj);
         uint256 currentlyExecuting = getCurrentlyExecuting();
 
@@ -150,7 +161,10 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    function expectFutureCallAt(CallObject memory callObj, uint256 index) external returns (bool isExecutedAtIndex) {
+    function expectFutureCallAt(
+        CallObject memory callObj,
+        uint256 index
+    ) external returns (bool isExecutedAtIndex) {
         uint256[] memory callIndices = getCallIndex(callObj);
 
         for (uint256 i; i < callIndices.length; i++) {
@@ -161,11 +175,16 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
-        external
-    {
+    function pushUserObjective(
+        UserObjective calldata _userObjective,
+        AdditionalData[] calldata _additionalData
+    ) external {
         emit UserObjectivePushed(
-            _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
+            _userObjective.appId,
+            _userObjective.chainId,
+            block.number,
+            _userObjective,
+            _additionalData
         );
     }
 
@@ -173,7 +192,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @dev This function validates that the correct CallObj lives in the sequence of calls and returns the index
     /// @param callObj The CallObject whose indices are to be fetched
     /// @return callIndices The indices of the CallObject
-    function getCallIndex(CallObject memory callObj) public returns (uint256[] memory callIndices) {
+    function getCallIndex(
+        CallObject memory callObj
+    ) public returns (uint256[] memory callIndices) {
         if (!callObjIndicesSet) {
             _populateCallIndices();
         }
@@ -196,13 +217,22 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    function getMessageHash(UserObjective memory userObj) public pure returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(
-                "\x19Ethereum Signed Message:\n32",
-                keccak256(abi.encode(userObj.nonce, userObj.sender, keccak256(abi.encode(userObj.callObjects))))
-            )
-        );
+    function getMessageHash(
+        UserObjective memory userObj
+    ) public pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encodePacked(
+                    "\x19Ethereum Signed Message:\n32",
+                    keccak256(
+                        abi.encode(
+                            userObj.nonce,
+                            userObj.sender,
+                            keccak256(abi.encode(userObj.callObjects))
+                        )
+                    )
+                )
+            );
     }
 
     function _setupExecutionData(
@@ -241,9 +271,14 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         for (uint256 index = 0; index < callLength; index++) {
             uint256 preGas = gasleft();
             _setCurrentlyExecutingCallIndex(index);
-            (uint256 u_index, uint256 c_index) = _resolveFlatIndex(orderOfExecution[index]);
+            (uint256 u_index, uint256 c_index) = _resolveFlatIndex(
+                orderOfExecution[index]
+            );
 
-            _executeAndVerifyCall(callGrid[u_index][c_index], returnValues[index]);
+            _executeAndVerifyCall(
+                callGrid[u_index][c_index],
+                returnValues[index]
+            );
             uint256 gasConsumed = preGas - gasleft();
 
             // Add gas consumed to the user's total
@@ -255,16 +290,23 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
 
     /// @dev Executes a single call and verifies the result
     /// @param callObj the CallObject to be executed and verified
-    function _executeAndVerifyCall(CallObject memory callObj, bytes memory solverReturnValue) internal {
-        (bool success, bytes memory returnFromExecution) =
-            callObj.addr.call{gas: callObj.gas, value: callObj.amount}(callObj.callvalue);
+    function _executeAndVerifyCall(
+        CallObject memory callObj,
+        bytes memory solverReturnValue
+    ) internal {
+        (bool success, bytes memory returnFromExecution) = callObj.addr.call{
+            gas: callObj.gas,
+            value: callObj.amount
+        }(callObj.callvalue);
         if (!success) {
             revert CallFailed();
         }
 
         if (callObj.verifiable) {
-            bytes memory expectedReturn =
-                keccak256(callObj.returnvalue) == EMPTY_DATA ? solverReturnValue : callObj.returnvalue;
+            bytes memory expectedReturn = keccak256(callObj.returnvalue) ==
+                EMPTY_DATA
+                ? solverReturnValue
+                : callObj.returnvalue;
             if (keccak256(expectedReturn) != keccak256(returnFromExecution)) {
                 revert CallVerificationFailed();
             }
@@ -287,7 +329,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     }
 
     /// @notice Store the ABI-encoded order of execution into transient storage
-    function _storeOrderOfExecution(uint256[] memory orderOfExecution) internal {
+    function _storeOrderOfExecution(
+        uint256[] memory orderOfExecution
+    ) internal {
         bytes memory encodedValue = abi.encode(orderOfExecution);
 
         uint256 slot = uint256(CALL_ORDER_STORAGE_SLOT);
@@ -307,7 +351,10 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         return abi.decode(encodedValue, (uint256[]));
     }
 
-    function _collectCostOfExecution(UserObjective[] memory userObjs, uint256[] memory gasPerUser) internal {
+    function _collectCostOfExecution(
+        UserObjective[] memory userObjs,
+        uint256[] memory gasPerUser
+    ) internal {
         uint256 userCount = userObjs.length;
         for (uint256 i; i < userCount; i++) {
             // Calculate cost for this user's gas usage and tip
@@ -315,7 +362,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
             userCost += userObjs[i].tip;
 
             // Transfer cost from user's balance to solver
-            if (senderBalances[userObjs[i].sender] < userCost) revert OutOfEther();
+            if (senderBalances[userObjs[i].sender] < userCost)
+                revert OutOfEther();
 
             senderBalances[userObjs[i].sender] -= userCost;
             senderBalances[msg.sender] += userCost;
@@ -342,8 +390,14 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     function _cleanUpCallIndices() internal {
         if (callObjIndicesSet) {
             for (uint256 u_index; u_index < callGrid.length; u_index++) {
-                for (uint256 c_index; c_index < callGrid[u_index].length; c_index++) {
-                    delete callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))];
+                for (
+                    uint256 c_index;
+                    c_index < callGrid[u_index].length;
+                    c_index++
+                ) {
+                    delete callObjIndices[
+                        keccak256(abi.encode(callGrid[u_index][c_index]))
+                    ];
                 }
             }
             callObjIndicesSet = false;
@@ -362,7 +416,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
 
     /// @notice Populates the additionalDataStore with a list of key-value pairs
     /// @param mevTimeData The abi-encoded list of (bytes32, bytes32) key-value pairs
-    function _populateAdditionalDataStore(AdditionalData[] memory mevTimeData) internal {
+    function _populateAdditionalDataStore(
+        AdditionalData[] memory mevTimeData
+    ) internal {
         uint256 len = mevTimeData.length;
         for (uint256 i; i < len; i++) {
             additionalDataKeyList.push(mevTimeData[i].key); // TODO: clear after execution
@@ -374,15 +430,21 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         uint256[] memory orderOfExecution = _fetchOrderOfExecution();
 
         for (uint256 index = 0; index < orderOfExecution.length; index++) {
-            (uint256 u_index, uint256 c_index) = _resolveFlatIndex(orderOfExecution[index]);
-            callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))].push(index);
+            (uint256 u_index, uint256 c_index) = _resolveFlatIndex(
+                orderOfExecution[index]
+            );
+            callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))]
+                .push(index);
         }
 
         callObjIndicesSet = true;
         emit CallIndicesPopulated();
     }
 
-    function _verifySignatures(UserObjective memory userObj, bytes memory signature) internal pure {
+    function _verifySignatures(
+        UserObjective memory userObj,
+        bytes memory signature
+    ) internal pure {
         require(signature.length == 65, "Invalid signature length");
 
         bytes32 messageHash = getMessageHash(userObj);
@@ -404,13 +466,17 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    function _effectiveGasPrice(UserObjective memory userObj) internal view returns (uint256) {
+    function _effectiveGasPrice(
+        UserObjective memory userObj
+    ) internal view returns (uint256) {
         uint256 maxFee = userObj.maxFeePerGas;
         uint256 priority = userObj.maxPriorityFeePerGas;
         return _min(maxFee, block.basefee + priority);
     }
 
-    function _resolveFlatIndex(uint256 flatIndex) internal view returns (uint256, uint256) {
+    function _resolveFlatIndex(
+        uint256 flatIndex
+    ) internal view returns (uint256, uint256) {
         uint256 runningIndex = 0;
 
         // TODO: avoid callGrid[i].length calculation by storing these values in tstore
