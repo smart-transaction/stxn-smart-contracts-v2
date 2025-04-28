@@ -10,7 +10,7 @@ contract DeployCallBreaker is BaseDeployer {
     function run() external {
         uint256 deployerPrivateKey = _getPrivateKey();
 
-        for (uint i = 0; i < networks.length; i++) {
+        for (uint256 i = 0; i < networks.length; i++) {
             NetworkConfig memory config = networks[i];
             console.log("Deploying CallBreaker (CREATE) to:", config.name);
 
@@ -29,7 +29,7 @@ contract DeployCallBreaker is BaseDeployer {
         uint256 deployerPrivateKey = _getPrivateKey();
         bytes32 _salt = bytes32(salt);
 
-        for (uint i = 0; i < networks.length; i++) {
+        for (uint256 i = 0; i < networks.length; i++) {
             NetworkConfig memory config = networks[i];
             console.log("Deploying CallBreaker (CREATE2) to:", config.name);
 

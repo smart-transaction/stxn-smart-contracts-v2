@@ -33,9 +33,11 @@ abstract contract BaseDeployer is Script {
 
     NetworkConfig[] public networks;
     string public networkType;
+    string[] public targetChains;
 
     constructor() {
         networkType = vm.envString("NETWORK_TYPE");
+        _loadTargetChains();
         _loadNetworks();
         _validateNetworks();
     }
@@ -45,10 +47,7 @@ abstract contract BaseDeployer is Script {
         string memory path = string.concat(root, "/config/networks.json");
         string memory json = vm.readFile(path);
         bytes memory networksData = vm.parseJson(json);
-        RawNetworkConfigWrapper memory wrapper = abi.decode(
-            networksData,
-            (RawNetworkConfigWrapper)
-        );
+        RawNetworkConfigWrapper memory wrapper = abi.decode(networksData, (RawNetworkConfigWrapper));
 
         delete networks;
 
@@ -66,10 +65,26 @@ abstract contract BaseDeployer is Script {
         }
     }
 
-    function _processNetworkArray(
-        RawNetworkConfig[] memory rawConfigs
-    ) internal {
-        for (uint i = 0; i < rawConfigs.length; i++) {
+    // New function to load target chains
+    function _loadTargetChains() internal {
+        string memory chains = vm.envOr("TARGET_CHAINS", string(""));
+
+        if (bytes(chains).length > 0) {
+            try vm.parseJson(chains) returns (bytes memory jsonData) {
+                targetChains = abi.decode(jsonData, (string[]));
+            } catch {
+                revert("Invalid TARGET_CHAINS format - must be JSON array");
+            }
+        }
+    }
+
+    function _processNetworkArray(RawNetworkConfig[] memory rawConfigs) internal {
+        for (uint256 i = 0; i < rawConfigs.length; i++) {
+            // Skip if target chains are specified and not in list
+            if (targetChains.length > 0 && !_isNetworkIncluded(rawConfigs[i].name)) {
+                continue;
+            }
+
             NetworkConfig memory config = NetworkConfig({
                 name: rawConfigs[i].name,
                 rpcUrl: vm.envString(rawConfigs[i].rpcEnvKey),
@@ -100,14 +115,21 @@ abstract contract BaseDeployer is Script {
         require(networks.length > 0, "No networks configured for this type");
     }
 
+    function _isNetworkIncluded(string memory name) internal view returns (bool) {
+        for (uint256 j = 0; j < targetChains.length; j++) {
+            if (keccak256(bytes(name)) == keccak256(bytes(targetChains[j]))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function _getPrivateKey() internal view returns (uint256) {
-        string memory envVar = string(
-            abi.encodePacked(networkType, "_PRIVATE_KEY")
-        );
+        string memory envVar = string(abi.encodePacked(networkType, "_PRIVATE_KEY"));
         return vm.envUint(envVar);
     }
 
     function _computeCreate2Address(bytes32 salt, bytes32 creationCode) internal pure returns (address) {
-        return computeCreate2Address(salt, creationCode);    
+        return computeCreate2Address(salt, creationCode);
     }
 }
