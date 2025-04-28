@@ -25,11 +25,18 @@ fi
 NETWORK_TYPE=$1
 CONTRACT_NAME=$2
 SALT=${3:-}
+TARGET_CHAINS=${4:-}
 
 # Convert to uppercase and validate network
 NETWORK_TYPE=$(echo "$NETWORK_TYPE" | tr '[:lower:]' '[:upper:]')
 if [[ ! " ${valid_networks[@]} " =~ " ${NETWORK_TYPE} " ]]; then
     error_exit "Invalid NETWORK_TYPE: '$NETWORK_TYPE'"
+fi
+
+# Add chains to environment
+if [[ -n "$TARGET_CHAINS" ]]; then
+    export TARGET_CHAINS="$TARGET_CHAINS"
+    echo -e "Target chains: ${GREEN}$TARGET_CHAINS${NC}"
 fi
 
 # Validate salt if provided
@@ -75,5 +82,5 @@ if ! eval "$FORGE_CMD"; then
 fi
 
 # Success message
-echo -e "${GREEN}✅ Successfully deployed $CONTRACT_NAME to $NETWORK_TYPE networks ${SALT_MSG}${NC}"
+echo -e "${GREEN}✅ Successfully deployed $CONTRACT_NAME to ${TARGET_CHAINS:-all $NETWORK_TYPE} networks ${SALT_MSG}${NC}"
 echo -e "${YELLOW}⏱  Deployment completed in ${SECONDS} seconds${NC}"
