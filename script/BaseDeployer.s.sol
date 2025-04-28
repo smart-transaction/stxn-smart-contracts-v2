@@ -106,4 +106,8 @@ abstract contract BaseDeployer is Script {
         );
         return vm.envUint(envVar);
     }
+
+    function _computeCreate2Address(bytes32 salt, bytes32 creationCode) internal pure returns (address) {
+        return computeCreate2Address(salt, creationCode);    
+    }
 }

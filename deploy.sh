@@ -1,78 +1,79 @@
 #!/bin/bash
-# Usage: ./deploy.sh <network-type> <contract-name>
+# Updated Usage: ./deploy.sh <network-type> <contract-name> [salt]
 
 set -eo pipefail
 
-# Color codes for better visibility
+# Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 valid_networks=("MAINNET" "TESTNET" "LESTNET")
 
-
-# Function for error handling
+# Error handling
 error_exit() {
     echo -e "${RED}❌ Error: $1${NC}" >&2
     exit 1
 }
 
-# Validate arguments
+# Validate minimum arguments
 if [[ -z "$1" || -z "$2" ]]; then
-    error_exit "Missing arguments\nUsage: ./deploy.sh <network-type> <contract-name>"
+    error_exit "Missing arguments\nUsage: ./deploy.sh <network-type> <contract-name> [salt]"
 fi
 
 NETWORK_TYPE=$1
+CONTRACT_NAME=$2
+SALT=${3:-}
 
-# Convert to uppercase and validate
+# Convert to uppercase and validate network
 NETWORK_TYPE=$(echo "$NETWORK_TYPE" | tr '[:lower:]' '[:upper:]')
 if [[ ! " ${valid_networks[@]} " =~ " ${NETWORK_TYPE} " ]]; then
     error_exit "Invalid NETWORK_TYPE: '$NETWORK_TYPE'"
 fi
 
-CONTRACT_NAME=$2
+# Validate salt if provided
+if [[ -n "$SALT" ]]; then
+    if ! [[ "$SALT" =~ ^[0-9]+$ ]]; then
+        error_exit "Invalid salt value: '$SALT'. Must be a numeric value."
+    fi
+    SALT_MSG="with salt $SALT"
+else
+    SALT_MSG="without any salt"
+fi
 
 echo -e "${YELLOW}⚡ Starting deployment process...${NC}"
 echo -e "Network type: ${GREEN}$NETWORK_TYPE${NC}"
 echo -e "Contract name: ${GREEN}$CONTRACT_NAME${NC}"
+echo -e "Salt usage: ${GREEN}${SALT_MSG}${NC}"
 
 # Environment file handling
-if [ -f .env ]; then
-    echo -e "${YELLOW}🔧 Loading environment variables...${NC}"
-    set -a
-    source .env
-    set +a
-else
-    echo -e "${YELLOW}⚠️  No .env file found${NC}"
-fi
+[ -f .env ] && source .env
 
 # Set network type environment variable
 export NETWORK_TYPE=$NETWORK_TYPE
 
-# Construct script name and path
 SCRIPT_NAME="Deploy${CONTRACT_NAME}.s.sol"
-SCRIPT_PATH="script/${SCRIPT_NAME}"  # Fixed path from 'script' to 'scripts'
-
-echo -e "${YELLOW}🔍 Validating deployment script...${NC}"
-echo -e "Script path: ${GREEN}$SCRIPT_PATH${NC}"
+SCRIPT_PATH="script/${SCRIPT_NAME}"
 
 # Verify script exists
-if [ ! -f "$SCRIPT_PATH" ]; then
-    error_exit "Deployment script not found for contract '$CONTRACT_NAME'\nExpected: $SCRIPT_PATH"
+[ ! -f "$SCRIPT_PATH" ] && error_exit "Deployment script not found: $SCRIPT_PATH"
+
+# Build forge command
+FORGE_CMD="forge script $SCRIPT_PATH --broadcast -vvvv --ffi"
+
+if [[ -n "$SALT" ]]; then
+    FORGE_CMD+=" --sig \"run(uint256)\" $SALT"
+else
+    FORGE_CMD+=" --sig \"run()\""
 fi
 
-# Run deployment script with verbose output
-echo -e "${YELLOW}🚀 Starting deployment to $NETWORK_TYPE networks...${NC}"
-echo -e "${YELLOW}🔧 Running forge script with verbose output...${NC}"
-
-if ! forge script "$SCRIPT_PATH" \
-    --broadcast \
-    --sig "run()" \
-    -vvvv --ffi; then
+# Execute deployment
+echo -e "${YELLOW}🚀 Starting deployment...${NC}"
+if ! eval "$FORGE_CMD"; then
     error_exit "Deployment failed during execution phase"
 fi
 
-# Final success message
-echo -e "${GREEN}✅ Successfully deployed $CONTRACT_NAME to $NETWORK_TYPE networks${NC}"
+# Success message
+echo -e "${GREEN}✅ Successfully deployed $CONTRACT_NAME to $NETWORK_TYPE networks ${SALT_MSG}${NC}"
 echo -e "${YELLOW}⏱  Deployment completed in ${SECONDS} seconds${NC}"
