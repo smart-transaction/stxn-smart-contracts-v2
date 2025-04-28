@@ -28,6 +28,24 @@
             "verifierUrl": "https://api-amoy.polygonscan.com/api",
             "explorerUrl": "https://amoy.polygonscan.com",
             "apiKeyEnv": "POLYGONSCAN_API_KEY"
+        },
+        {
+            "name": "arbitrum_sepolia",
+            "rpcEnvKey": "ARBITRUM_SEPOLIA_RPC",
+            "chainId": 421614,
+            "verifier": "etherscan",
+            "verifierUrl": "https://api-sepolia.arbiscan.io/api",
+            "explorerUrl": "https://sepolia.arbiscan.io",
+            "apiKeyEnv": "ARBITRUMSCAN_API_KEY"
+        },
+        {
+            "name": "base_sepolia",
+            "rpcEnvKey": "BASE_SEPOLIA_RPC",
+            "chainId": 84532,
+            "verifier": "etherscan",
+            "verifierUrl": "https://api-sepolia.basescan.org/api",
+            "explorerUrl": "https://sepolia.basescan.org",
+            "apiKeyEnv": "BASESCAN_API_KEY"
         }
     ],
     "LESTNET": {
