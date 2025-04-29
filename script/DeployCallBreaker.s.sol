@@ -9,26 +9,18 @@ contract DeployCallBreaker is BaseDeployer {
     // Non-salted deployment (CREATE)
     function run() external {
         uint256 deployerPrivateKey = _getPrivateKey();
-
-        for (uint256 i = 0; i < networks.length; i++) {
-            NetworkConfig memory config = networks[i];
-            console.log("Deploying CallBreaker (CREATE) to:", config.name);
-
-            vm.createSelectFork(config.rpcUrl);
-            vm.startBroadcast(deployerPrivateKey);
-
-            address contractAddress = address(new CallBreaker());
-            console.log("CallBreaker deployed to:", contractAddress);
-
-            vm.stopBroadcast();
-        }
+        bytes32 _salt = _generateSalt();
+        _deploy(_salt, deployerPrivateKey);
     }
 
     // Salted deployment (CREATE2)
     function run(uint256 salt) external {
         uint256 deployerPrivateKey = _getPrivateKey();
         bytes32 _salt = bytes32(salt);
+        _deploy(_salt, deployerPrivateKey);
+    }
 
+    function _deploy(bytes32 salt, uint256 deployerPrivateKey) internal {
         for (uint256 i = 0; i < networks.length; i++) {
             NetworkConfig memory config = networks[i];
             console.log("Deploying CallBreaker (CREATE2) to:", config.name);
@@ -36,8 +28,8 @@ contract DeployCallBreaker is BaseDeployer {
             vm.createSelectFork(config.rpcUrl);
             vm.startBroadcast(deployerPrivateKey);
 
-            address contractAddress = address(new CallBreaker{salt: _salt}());
-            address computedAddress = _computeCreate2Address(_salt, hashInitCode(type(CallBreaker).creationCode));
+            address contractAddress = address(new CallBreaker{salt: salt}());
+            address computedAddress = _computeCreate2Address(salt, hashInitCode(type(CallBreaker).creationCode));
             require(contractAddress == computedAddress, "Contract address mismatch");
             console.log("CallBreaker deployed to:", contractAddress);
 
