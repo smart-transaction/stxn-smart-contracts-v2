@@ -46,13 +46,19 @@ interface IMultiCall3 {
     /// @param calls Array of Call structs
     /// @return blockNumber Current block number
     /// @return returnData Array of return bytes
-    function aggregate(Call[] calldata calls) external payable returns (uint256 blockNumber, bytes[] memory returnData);
+    function aggregate(Call[] calldata calls)
+        external
+        payable
+        returns (uint256 blockNumber, bytes[] memory returnData);
 
     /// @notice Aggregation with failure control
     /// @param requireSuccess Whether to require all calls to succeed
     /// @param calls Array of Call structs
     /// @return returnData Array of Result structs
-    function tryAggregate(bool requireSuccess, Call[] calldata calls) external payable returns (Result[] memory returnData);
+    function tryAggregate(bool requireSuccess, Call[] calldata calls)
+        external
+        payable
+        returns (Result[] memory returnData);
 
     /// @notice Aggregation with block context and failure control
     /// @param requireSuccess Whether to require all calls to succeed
@@ -60,7 +66,9 @@ interface IMultiCall3 {
     /// @return blockNumber Current block number
     /// @return blockHash Current block hash
     /// @return returnData Array of Result structs
-    function tryBlockAndAggregate(bool requireSuccess, Call[] calldata calls) external payable 
+    function tryBlockAndAggregate(bool requireSuccess, Call[] calldata calls)
+        external
+        payable
         returns (uint256 blockNumber, bytes32 blockHash, Result[] memory returnData);
 
     /// @notice Block-aware aggregation (Multicall2-compatible)
@@ -68,7 +76,9 @@ interface IMultiCall3 {
     /// @return blockNumber Current block number
     /// @return blockHash Current block hash
     /// @return returnData Array of Result structs
-    function blockAndAggregate(Call[] calldata calls) external payable 
+    function blockAndAggregate(Call[] calldata calls)
+        external
+        payable
         returns (uint256 blockNumber, bytes32 blockHash, Result[] memory returnData);
 
     /// @notice Enhanced aggregation with per-call failure control

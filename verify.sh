@@ -128,7 +128,7 @@ verify_contract() {
     local base_command="forge verify-contract \
         --rpc-url \"$rpc_url\" \
         $CONTRACT_ADDRESS \
-        "src/CallBreaker.sol:A" \
+        "src/CallBreaker.sol:CallBreaker" \
         --verifier $verifier \
         --verifier-url \"$verifier_url\""
 

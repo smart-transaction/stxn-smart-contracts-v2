@@ -8,12 +8,16 @@ import "src/interfaces/IMultiCall3.sol";
 /// @dev Multicall & Multicall2 backwards-compatible
 /// @dev Aggregate methods are marked `payable` to save 24 gas per call
 contract MultiCall3 is IMultiCall3 {
-
     /// @notice Backwards-compatible call aggregation with Multicall
     /// @param calls An array of Call structs
     /// @return blockNumber The block number where the calls were executed
     /// @return returnData An array of bytes containing the responses
-    function aggregate(Call[] calldata calls) public payable override returns (uint256 blockNumber, bytes[] memory returnData) {
+    function aggregate(Call[] calldata calls)
+        public
+        payable
+        override
+        returns (uint256 blockNumber, bytes[] memory returnData)
+    {
         blockNumber = block.number;
         uint256 length = calls.length;
         returnData = new bytes[](length);
@@ -23,7 +27,9 @@ contract MultiCall3 is IMultiCall3 {
             call = calls[i];
             (success, returnData[i]) = call.target.call(call.callData);
             require(success, "MultiCall3: call failed");
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
     }
 
@@ -32,7 +38,12 @@ contract MultiCall3 is IMultiCall3 {
     /// @param requireSuccess If true, require all calls to succeed
     /// @param calls An array of Call structs
     /// @return returnData An array of Result structs
-    function tryAggregate(bool requireSuccess, Call[] calldata calls) public payable override returns (Result[] memory returnData) {
+    function tryAggregate(bool requireSuccess, Call[] calldata calls)
+        public
+        payable
+        override
+        returns (Result[] memory returnData)
+    {
         uint256 length = calls.length;
         returnData = new Result[](length);
         Call calldata call;
@@ -41,7 +52,9 @@ contract MultiCall3 is IMultiCall3 {
             call = calls[i];
             (result.success, result.returnData) = call.target.call(call.callData);
             if (requireSuccess) require(result.success, "MultiCall3: call failed");
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
     }
 
@@ -51,7 +64,12 @@ contract MultiCall3 is IMultiCall3 {
     /// @return blockNumber The block number where the calls were executed
     /// @return blockHash The hash of the block where the calls were executed
     /// @return returnData An array of Result structs
-    function tryBlockAndAggregate(bool requireSuccess, Call[] calldata calls) public payable override returns (uint256 blockNumber, bytes32 blockHash, Result[] memory returnData) {
+    function tryBlockAndAggregate(bool requireSuccess, Call[] calldata calls)
+        public
+        payable
+        override
+        returns (uint256 blockNumber, bytes32 blockHash, Result[] memory returnData)
+    {
         blockNumber = block.number;
         blockHash = blockhash(block.number);
         returnData = tryAggregate(requireSuccess, calls);
@@ -63,7 +81,12 @@ contract MultiCall3 is IMultiCall3 {
     /// @return blockNumber The block number where the calls were executed
     /// @return blockHash The hash of the block where the calls were executed
     /// @return returnData An array of Result structs
-    function blockAndAggregate(Call[] calldata calls) public payable override returns (uint256 blockNumber, bytes32 blockHash, Result[] memory returnData) {
+    function blockAndAggregate(Call[] calldata calls)
+        public
+        payable
+        override
+        returns (uint256 blockNumber, bytes32 blockHash, Result[] memory returnData)
+    {
         (blockNumber, blockHash, returnData) = tryBlockAndAggregate(true, calls);
     }
 
@@ -93,7 +116,9 @@ contract MultiCall3 is IMultiCall3 {
                     revert(0x00, 0x64)
                 }
             }
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
     }
 
@@ -101,7 +126,12 @@ contract MultiCall3 is IMultiCall3 {
     /// @notice Reverts if msg.value is less than the sum of the call values
     /// @param calls An array of Call3Value structs
     /// @return returnData An array of Result structs
-    function aggregate3Value(Call3Value[] calldata calls) public payable override returns (Result[] memory returnData) {
+    function aggregate3Value(Call3Value[] calldata calls)
+        public
+        payable
+        override
+        returns (Result[] memory returnData)
+    {
         uint256 valAccumulator;
         uint256 length = calls.length;
         returnData = new Result[](length);
@@ -112,7 +142,9 @@ contract MultiCall3 is IMultiCall3 {
             uint256 val = calli.value;
             // Humanity will be a Type V Kardashev Civilization before this overflows - andreas
             // ~ 10^25 Wei in existence << ~ 10^76 size uint fits in a uint256
-            unchecked { valAccumulator += val; }
+            unchecked {
+                valAccumulator += val;
+            }
             (result.success, result.returnData) = calli.target.call{value: val}(calli.callData);
             assembly {
                 // Revert if the call fails and failure is not allowed
@@ -129,7 +161,9 @@ contract MultiCall3 is IMultiCall3 {
                     revert(0x00, 0x84)
                 }
             }
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
         // Finally, make sure the msg.value = SUM(call[0...i].value)
         require(msg.value == valAccumulator, "MultiCall3: value mismatch");
