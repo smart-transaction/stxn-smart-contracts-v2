@@ -1,10 +1,9 @@
 #!/bin/bash
 
-# Usage: ./deploy.sh <network-type> <contract-name> [salt|chains] [salt|chains] [constructor-args...]
-# Examples:
-# CallBreaker with salt:  ./deploy.sh testnet CallBreaker 12345
-# MockERC20 with salt:    ./deploy.sh testnet MockERC20 12345 '["chain"]' MyToken MTK
-# MockERC20 without salt: ./deploy.sh testnet MockERC20 '["chain"]' MyToken MTK
+# Usage: ./deploy.sh <network-type> <contract-name> [chains] [count] [names-array] [symbols-array]
+# Example: ./deploy.sh testnet MockERC20 '["chain"]' 2 '["Token1","Token2"]' '["T1","T2"]'
+# CallBreaker with salt
+# ./deploy.sh testnet CallBreaker '["chain"]' 12345
 
 set -eo pipefail
 
@@ -22,9 +21,14 @@ error_exit() {
     exit 1
 }
 
+# Check for jq dependency
+if ! command -v jq &> /dev/null; then
+    error_exit "jq is required. Install with: sudo apt-get install jq"
+fi
+
 # Validate minimum arguments
 if [[ -z "$1" || -z "$2" ]]; then
-    error_exit "Missing arguments\nUsage: ./deploy.sh <network-type> <contract-name> [salt|chains] [salt|chains] [constructor-args...]"
+    error_exit "Missing arguments\nUsage: ./deploy.sh <network-type> <contract-name> [chains] [count] [names-array] [symbols-array]"
 fi
 
 NETWORK_TYPE=$1
@@ -32,73 +36,50 @@ CONTRACT_NAME=$2
 shift 2
 
 # Initialize parameters
-SALT=""
 TARGET_CHAINS=""
-declare -a CONSTRUCTOR_ARGS=()
+DEPLOY_COUNT=1
+declare -a NAMES=()
+declare -a SYMBOLS=()
 
-# Process optional salt/chains and collect constructor args
-while [[ $# -gt 0 ]]; do
-    arg="$1"
-    # Check for salt
-    if [[ -z "$SALT" && "$arg" =~ ^[0-9]+$ ]]; then
-        SALT="$arg"
-        shift
-    # Check for chains
-    elif [[ -z "$TARGET_CHAINS" && "$arg" =~ ^\[.*\]$ ]]; then
-        TARGET_CHAINS="$arg"
-        shift
-    # Remaining args are constructor parameters
-    else
-        CONSTRUCTOR_ARGS+=("$1")
-        shift
-    fi
-done
+# Process target chains (optional)
+if [[ "$1" =~ ^\[.*\]$ ]]; then
+    TARGET_CHAINS="$1"
+    shift
+fi
+
+# Contract-specific parameter handling
+case "$CONTRACT_NAME" in
+    "MockERC20")
+        # Get deploy count
+        if [[ "$1" =~ ^[0-9]+$ ]]; then
+            DEPLOY_COUNT="$1"
+            shift
+        fi
+        
+        # Process names and symbols arrays
+        if [[ $# -ge 2 ]]; then
+            NAMES=($(echo "$1" | jq -r '.[]'))
+            SYMBOLS=($(echo "$2" | jq -r '.[]'))
+            shift 2
+        fi
+
+        # Validate array lengths
+        if [[ ${#NAMES[@]} -ne $DEPLOY_COUNT || ${#SYMBOLS[@]} -ne $DEPLOY_COUNT ]]; then
+            error_exit "Array lengths must match deploy count. Names: ${#NAMES[@]}, Symbols: ${#SYMBOLS[@]}, Expected: $DEPLOY_COUNT"
+        fi
+        ;;
+    *)
+        # For other contracts, handle normally
+        if [[ "$1" =~ ^[0-9]+$ ]]; then
+            SALT="$1"
+            shift
+        fi
+        ;;
+esac
 
 # Convert network type to uppercase
 NETWORK_TYPE=$(echo "$NETWORK_TYPE" | tr '[:lower:]' '[:upper:]')
 [[ ! " ${valid_networks[@]} " =~ " ${NETWORK_TYPE} " ]] && error_exit "Invalid NETWORK_TYPE: '$NETWORK_TYPE'"
-
-# Validate salt format if provided
-[[ -n "$SALT" && ! "$SALT" =~ ^[0-9]+$ ]] && error_exit "Invalid salt value: '$SALT'. Must be numeric."
-
-# Contract configuration
-declare -a ARGS=()
-case "$CONTRACT_NAME" in
-    "CallBreaker")
-        if [[ -n "$SALT" ]]; then
-            SIG="run(uint256)"
-            ARGS=("$SALT")
-        else
-            SIG="run()"
-        fi
-        expected_args=0
-        ;;
-    "MultiCall3")
-        if [[ -n "$SALT" ]]; then
-            SIG="run(uint256)"
-            ARGS=("$SALT")
-        else
-            SIG="run()"
-        fi
-        expected_args=0
-        ;;
-    "MockERC20")
-        if [[ -n "$SALT" ]]; then
-            SIG="run(uint256,string,string)"
-            ARGS=("$SALT" "${CONSTRUCTOR_ARGS[@]}")
-        else
-            SIG="run(string,string)"
-            ARGS=("${CONSTRUCTOR_ARGS[@]}")
-        fi
-        expected_args=2
-        ;;
-    *) error_exit "Unsupported contract: $CONTRACT_NAME" ;;
-esac
-
-# Validate argument count
-if [[ ${#CONSTRUCTOR_ARGS[@]} -ne $expected_args ]]; then
-    error_exit "Invalid arguments for $CONTRACT_NAME. Expected ${expected_args}, got ${#CONSTRUCTOR_ARGS[@]}"
-fi
 
 # Environment setup
 [ -f .env ] && source .env
@@ -109,25 +90,45 @@ export NETWORK_TYPE=$NETWORK_TYPE
 echo -e "${YELLOW}⚡ Starting deployment...${NC}"
 echo -e "• Network: ${GREEN}$NETWORK_TYPE${NC}"
 echo -e "• Contract: ${GREEN}$CONTRACT_NAME${NC}"
-echo -e "• Salt: ${GREEN}${SALT:-none}${NC}"
+[[ "$CONTRACT_NAME" == "MockERC20" ]] && echo -e "• Instances: ${GREEN}$DEPLOY_COUNT${NC}"
+[[ -n "$SALT" ]] && echo -e "• Salt: ${GREEN}$SALT${NC}"
 echo -e "• Chains: ${GREEN}${TARGET_CHAINS:-all networks}${NC}"
-[[ ${#CONSTRUCTOR_ARGS[@]} -gt 0 ]] && echo -e "• Arguments: ${GREEN}${CONSTRUCTOR_ARGS[@]}${NC}"
 
 # Verify deployment script exists
 SCRIPT_PATH="script/Deploy${CONTRACT_NAME}.s.sol"
 [ ! -f "$SCRIPT_PATH" ] && error_exit "Deployment script not found: $SCRIPT_PATH"
 
-# Build forge command
-FORGE_CMD="forge script $SCRIPT_PATH --broadcast -vvvv --ffi --sig \"$SIG\""
-for arg in "${ARGS[@]}"; do
-    FORGE_CMD+=" \"$arg\""
-done
+# Build and execute commands based on contract type
+case "$CONTRACT_NAME" in
+    "MockERC20")
+        for ((i=0; i<DEPLOY_COUNT; i++)); do
+            name="${NAMES[$i]}"
+            symbol="${SYMBOLS[$i]}"
+            
+            echo -e "\n${YELLOW}🚀 Deploying instance $((i+1))/${DEPLOY_COUNT}${NC}"
+            echo -e "• Name: ${GREEN}$name${NC}"
+            echo -e "• Symbol: ${GREEN}$symbol${NC}"
+            
+            forge script $SCRIPT_PATH \
+                --broadcast \
+                -vvvv \
+                --ffi \
+                --sig "run(string,string)" \
+                "$name" \
+                "$symbol"
+        done
+        ;;
+    *)
+        # For other contracts
+        FORGE_CMD="forge script $SCRIPT_PATH --broadcast -vvvv --ffi"
+        if [[ -n "$SALT" ]]; then
+            FORGE_CMD+=" --sig \"run(uint256)\" $SALT"
+        else
+            FORGE_CMD+=" --sig \"run()\""
+        fi
+        eval "$FORGE_CMD"
+        ;;
+esac
 
-# Execute deployment
-echo -e "\n${YELLOW}🚀 Running: $FORGE_CMD${NC}"
-if ! eval "$FORGE_CMD"; then
-    error_exit "Deployment failed during execution"
-fi
-
-echo -e "\n${GREEN}✅ Deployment successful!${NC}"
+echo -e "\n${GREEN}✅ Successfully deployed ${DEPLOY_COUNT} ${CONTRACT_NAME} instances!${NC}"
 echo -e "${YELLOW}⏱  Completed in ${SECONDS} seconds${NC}"
