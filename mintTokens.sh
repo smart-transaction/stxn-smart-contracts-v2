@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./mintTokens.sh <network-type> <mockERC20-address> [chains] <user-address1> [<user-address2> ...]
+# Usage: ./mintTokens.sh testnet 0x..contract_address '["chain"]' "0x...user1" "0x...user2"
 
 set -eo pipefail
 
