@@ -1,20 +1,10 @@
 #!/bin/bash
 
-# Usage: ./deploy.sh <network-type> <contract-name> [salt|chains] [salt|chains]
-# Salt only
-#./deploy.sh testnet MyContract 12345
-
-# Chains only
-#./deploy.sh testnet MyContract '["polygon_amoy"]'
-
-# Both (salt first)
-#./deploy.sh testnet MyContract 12345 '["polygon_amoy"]'
-
-# Both (chains first)
-#./deploy.sh testnet MyContract '["polygon_amoy"]' 12345
-
-# Neither
-#./deploy.sh testnet MyContract
+# Usage: ./deploy.sh <network-type> <contract-name> [salt|chains] [salt|chains] [constructor-args...]
+# Examples:
+# CallBreaker with salt:  ./deploy.sh testnet CallBreaker 12345
+# MockERC20 with salt:    ./deploy.sh testnet MockERC20 12345 '["chain"]' MyToken MTK
+# MockERC20 without salt: ./deploy.sh testnet MockERC20 '["chain"]' MyToken MTK
 
 set -eo pipefail
 
@@ -34,93 +24,110 @@ error_exit() {
 
 # Validate minimum arguments
 if [[ -z "$1" || -z "$2" ]]; then
-    error_exit "Missing arguments\nUsage: ./deploy.sh <network-type> <contract-name> [salt|chains] [salt|chains]"
+    error_exit "Missing arguments\nUsage: ./deploy.sh <network-type> <contract-name> [salt|chains] [salt|chains] [constructor-args...]"
 fi
 
 NETWORK_TYPE=$1
 CONTRACT_NAME=$2
 shift 2
 
-# Initialize optional parameters
+# Initialize parameters
 SALT=""
 TARGET_CHAINS=""
+declare -a CONSTRUCTOR_ARGS=()
 
-# Process remaining arguments
-for arg in "$@"; do
-    if [[ "$arg" =~ ^[0-9]+$ ]]; then
-        if [[ -z "$SALT" ]]; then
-            SALT="$arg"
-        else
-            error_exit "Multiple salt values provided: $arg"
-        fi
-    elif [[ "$arg" =~ ^\[.*\]$ ]]; then
-        if [[ -z "$TARGET_CHAINS" ]]; then
-            TARGET_CHAINS="$arg"
-        else
-            error_exit "Multiple chain lists provided: $arg"
-        fi
+# Process optional salt/chains and collect constructor args
+while [[ $# -gt 0 ]]; do
+    arg="$1"
+    # Check for salt
+    if [[ -z "$SALT" && "$arg" =~ ^[0-9]+$ ]]; then
+        SALT="$arg"
+        shift
+    # Check for chains
+    elif [[ -z "$TARGET_CHAINS" && "$arg" =~ ^\[.*\]$ ]]; then
+        TARGET_CHAINS="$arg"
+        shift
+    # Remaining args are constructor parameters
     else
-        error_exit "Invalid argument: $arg - must be numeric salt or JSON array"
+        CONSTRUCTOR_ARGS+=("$1")
+        shift
     fi
 done
 
-# Convert to uppercase and validate network
+# Convert network type to uppercase
 NETWORK_TYPE=$(echo "$NETWORK_TYPE" | tr '[:lower:]' '[:upper:]')
-if [[ ! " ${valid_networks[@]} " =~ " ${NETWORK_TYPE} " ]]; then
-    error_exit "Invalid NETWORK_TYPE: '$NETWORK_TYPE'"
+[[ ! " ${valid_networks[@]} " =~ " ${NETWORK_TYPE} " ]] && error_exit "Invalid NETWORK_TYPE: '$NETWORK_TYPE'"
+
+# Validate salt format if provided
+[[ -n "$SALT" && ! "$SALT" =~ ^[0-9]+$ ]] && error_exit "Invalid salt value: '$SALT'. Must be numeric."
+
+# Contract configuration
+declare -a ARGS=()
+case "$CONTRACT_NAME" in
+    "CallBreaker")
+        if [[ -n "$SALT" ]]; then
+            SIG="run(uint256)"
+            ARGS=("$SALT")
+        else
+            SIG="run()"
+        fi
+        expected_args=0
+        ;;
+    "MultiCall3")
+        if [[ -n "$SALT" ]]; then
+            SIG="run(uint256)"
+            ARGS=("$SALT")
+        else
+            SIG="run()"
+        fi
+        expected_args=0
+        ;;
+    "MockERC20")
+        if [[ -n "$SALT" ]]; then
+            SIG="run(uint256,string,string)"
+            ARGS=("$SALT" "${CONSTRUCTOR_ARGS[@]}")
+        else
+            SIG="run(string,string)"
+            ARGS=("${CONSTRUCTOR_ARGS[@]}")
+        fi
+        expected_args=2
+        ;;
+    *) error_exit "Unsupported contract: $CONTRACT_NAME" ;;
+esac
+
+# Validate argument count
+if [[ ${#CONSTRUCTOR_ARGS[@]} -ne $expected_args ]]; then
+    error_exit "Invalid arguments for $CONTRACT_NAME. Expected ${expected_args}, got ${#CONSTRUCTOR_ARGS[@]}"
 fi
 
-# Validate salt if provided
-if [[ -n "$SALT" ]]; then
-    if ! [[ "$SALT" =~ ^[0-9]+$ ]]; then
-        error_exit "Invalid salt value: '$SALT'. Must be a numeric value."
-    fi
-    SALT_MSG="with salt $SALT"
-else
-    SALT_MSG="without salt"
-fi
-
-# Set target chains if provided
-if [[ -n "$TARGET_CHAINS" ]]; then
-    export TARGET_CHAINS="$TARGET_CHAINS"
-    CHAINS_MSG="to chains: ${GREEN}$TARGET_CHAINS${NC}"
-else
-    CHAINS_MSG="to ${GREEN}all $NETWORK_TYPE networks${NC}"
-fi
-
-echo -e "${YELLOW}⚡ Starting deployment process...${NC}"
-echo -e "Network type: ${GREEN}$NETWORK_TYPE${NC}"
-echo -e "Contract name: ${GREEN}$CONTRACT_NAME${NC}"
-echo -e "Deployment type: ${GREEN}$SALT_MSG${NC}"
-echo -e "Target: $CHAINS_MSG"
-
-# Environment file handling
+# Environment setup
 [ -f .env ] && source .env
-
-# Set network type environment variable
 export NETWORK_TYPE=$NETWORK_TYPE
+[[ -n "$TARGET_CHAINS" ]] && export TARGET_CHAINS="$TARGET_CHAINS"
 
-SCRIPT_NAME="Deploy${CONTRACT_NAME}.s.sol"
-SCRIPT_PATH="script/${SCRIPT_NAME}"
+# Deployment messages
+echo -e "${YELLOW}⚡ Starting deployment...${NC}"
+echo -e "• Network: ${GREEN}$NETWORK_TYPE${NC}"
+echo -e "• Contract: ${GREEN}$CONTRACT_NAME${NC}"
+echo -e "• Salt: ${GREEN}${SALT:-none}${NC}"
+echo -e "• Chains: ${GREEN}${TARGET_CHAINS:-all networks}${NC}"
+[[ ${#CONSTRUCTOR_ARGS[@]} -gt 0 ]] && echo -e "• Arguments: ${GREEN}${CONSTRUCTOR_ARGS[@]}${NC}"
 
-# Verify script exists
+# Verify deployment script exists
+SCRIPT_PATH="script/Deploy${CONTRACT_NAME}.s.sol"
 [ ! -f "$SCRIPT_PATH" ] && error_exit "Deployment script not found: $SCRIPT_PATH"
 
 # Build forge command
-FORGE_CMD="forge script $SCRIPT_PATH --broadcast -vvvv --ffi"
-
-if [[ -n "$SALT" ]]; then
-    FORGE_CMD+=" --sig \"run(uint256)\" $SALT"
-else
-    FORGE_CMD+=" --sig \"run()\""
-fi
+FORGE_CMD="forge script $SCRIPT_PATH --broadcast -vvvv --ffi --sig \"$SIG\""
+for arg in "${ARGS[@]}"; do
+    FORGE_CMD+=" \"$arg\""
+done
 
 # Execute deployment
-echo -e "${YELLOW}🚀 Starting deployment...${NC}"
+echo -e "\n${YELLOW}🚀 Running: $FORGE_CMD${NC}"
 if ! eval "$FORGE_CMD"; then
-    error_exit "Deployment failed during execution phase"
+    error_exit "Deployment failed during execution"
 fi
 
-# Success message
-echo -e "${GREEN}✅ Successfully deployed $CONTRACT_NAME${NC}"
-echo -e "${YELLOW}⏱  Deployment completed in ${SECONDS} seconds${NC}"
+echo -e "\n${GREEN}✅ Deployment successful!${NC}"
+echo -e "${YELLOW}⏱  Completed in ${SECONDS} seconds${NC}"
