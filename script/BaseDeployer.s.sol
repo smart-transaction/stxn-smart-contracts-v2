@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {stdJson} from "forge-std/StdJson.sol";
+// import {Vm} from "forge-std/Vm.sol";
 
 abstract contract BaseDeployer is Script {
     struct RawNetworkConfig {
@@ -131,5 +132,9 @@ abstract contract BaseDeployer is Script {
 
     function _computeCreate2Address(bytes32 salt, bytes32 creationCode) internal pure returns (address) {
         return computeCreate2Address(salt, creationCode);
+    }
+
+    function _generateSalt() internal returns (bytes32) {
+        return bytes32(uint256(vm.randomUint()));
     }
 }
