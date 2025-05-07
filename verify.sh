@@ -128,12 +128,14 @@ verify_contract() {
     local base_command="forge verify-contract \
         --rpc-url \"$rpc_url\" \
         $CONTRACT_ADDRESS \
-        "src/CallBreaker.sol:CallBreaker" \
+        \"$contract_path\" \
         --verifier $verifier \
         --verifier-url \"$verifier_url\""
 
     if [ -n "$CONSTRUCTOR_SIG" ]; then
         base_command+=" --constructor-args $ENCODED_ARGS"
+    else
+        base_command+=" --constructor-args \"0x\""
     fi
 
     if [ "$verifier" == "etherscan" ]; then
