@@ -87,6 +87,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     event CallIndicesPopulated();
 
     event UserObjectivePushed(
+        uint256 indexed requestId,
         bytes indexed appId,
         uint256 indexed chainId,
         uint256 blockNumber,
@@ -163,9 +164,17 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
 
     function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
         external
+        returns (uint256 requestId)
     {
+        requestId = uint256(
+            keccak256(
+                abi.encodePacked(
+                    msg.sender, _userObjective.chainId, _userObjective.nonce, block.timestamp, block.prevrandao
+                )
+            )
+        );
         emit UserObjectivePushed(
-            _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
+            requestId, _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
         );
     }
 
