@@ -58,5 +58,6 @@ interface ICallBreaker {
     ) external payable;
 
     function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
-        external;
+        external
+        returns (uint256 requestId);
 }

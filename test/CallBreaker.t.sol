@@ -222,9 +222,14 @@ contract CallBreakerTest is Test {
             _prepareInputsForSignalUserObjective();
 
         vm.prank(solver);
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit(false, true, true, true);
         emit CallBreaker.UserObjectivePushed(
-            userObjective.appId, userObjective.chainId, block.number, userObjective, additionalData
+            0, // ignored: requestId
+            userObjective.appId,
+            userObjective.chainId,
+            block.number,
+            userObjective,
+            additionalData
         );
         callBreaker.pushUserObjective(userObjective, additionalData);
     }
