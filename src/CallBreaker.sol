@@ -166,7 +166,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     }
 
     function pushUserObjective(
-        UserObjective calldata _userObjective, 
+        UserObjective calldata _userObjective,
         AdditionalData[] calldata _additionalData,
         CallObject calldata pushHook
     ) external returns (uint256 requestId) {
@@ -183,7 +183,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         );
 
         if (pushHook.addr != address(0) && pushHook.callvalue.length > 0) {
-            (bool success, ) = pushHook.addr.call(pushHook.callvalue);
+            (bool success,) = pushHook.addr.call(pushHook.callvalue);
             if (!success) revert HookFailed();
         }
     }
