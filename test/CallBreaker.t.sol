@@ -224,7 +224,7 @@ contract CallBreakerTest is Test {
         CallObject memory hook = CallObject({
             salt: 0,
             amount: 0,
-            gas: 0,
+            gas: 100000,
             addr: address(eventEmitter),
             callvalue: abi.encodeWithSignature("emitEvent(uint256)", 1),
             returnvalue: "",
