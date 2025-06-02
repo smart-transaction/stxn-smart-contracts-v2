@@ -165,6 +165,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
+    /// @notice Emits the submitted user objective to be executed by a stxn hub
+    /// @param _userObjective The user objective to be executed
+    /// @param _additionalData Additional data to be used in the execution
+    /// @param _pushHook Optional hook to be executed after emitting the objective
+    /// @return requestId Unique identifier for the pushed objective
     function pushUserObjective(
         UserObjective calldata _userObjective,
         AdditionalData[] calldata _additionalData,
