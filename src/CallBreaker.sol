@@ -72,6 +72,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @dev Error thrown when direct ETH transfer is attempted
     /// @dev Selector 0x157bd4c3
     error DirectETHTransferNotAllowed();
+    /// @dev Error thrown when a push hook fails
+    /// @dev Selector 0x4c2f04a4
+    error HookFailed();
 
     // event Tip(address indexed from, address indexed to, uint256 amount);
 
@@ -162,10 +165,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
-        external
-        returns (uint256 requestId)
-    {
+    function pushUserObjective(
+        UserObjective calldata _userObjective, 
+        AdditionalData[] calldata _additionalData,
+        CallObject calldata pushHook
+    ) external returns (uint256 requestId) {
         requestId = uint256(
             keccak256(
                 abi.encodePacked(
@@ -173,9 +177,15 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
                 )
             )
         );
+
         emit UserObjectivePushed(
             requestId, _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
         );
+
+        if (pushHook.addr != address(0) && pushHook.callvalue.length > 0) {
+            (bool success, ) = pushHook.addr.call(pushHook.callvalue);
+            if (!success) revert HookFailed();
+        }
     }
 
     /// @notice Fetches the index of a given CallObject from the callIndex store

@@ -221,6 +221,18 @@ contract CallBreakerTest is Test {
         (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
             _prepareInputsForSignalUserObjective();
 
+        CallObject memory hook = CallObject({
+            salt: 0,
+            amount: 0,
+            gas: 0,
+            addr: address(eventEmitter),
+            callvalue: abi.encodeWithSignature("emitEvent(uint256)", 1),
+            returnvalue: "",
+            skippable: false,
+            verifiable: false,
+            exposeReturn: false
+        });
+
         vm.prank(solver);
         vm.expectEmit(false, true, true, true);
         emit CallBreaker.UserObjectivePushed(
@@ -231,7 +243,7 @@ contract CallBreakerTest is Test {
             userObjective,
             additionalData
         );
-        callBreaker.pushUserObjective(userObjective, additionalData);
+        callBreaker.pushUserObjective(userObjective, additionalData, hook);
     }
 
     function _prepareInputsForCounter(uint256 numValues, bool userReturn)
