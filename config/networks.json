@@ -86,7 +86,7 @@
         {
             "name": "optimism_sepolia",
             "rpcEnvKey": "OPTIMISM_SEPOLIA_RPC",
-            "chainId": 42069,
+            "chainId": 11155420,
             "verifier": "etherscan",
             "verifierUrl": "https://api-sepolia-optimistic.etherscan.io/api",
             "explorerUrl": "https://sepolia-optimism.etherscan.io",
