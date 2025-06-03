@@ -72,6 +72,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @dev Error thrown when direct ETH transfer is attempted
     /// @dev Selector 0x157bd4c3
     error DirectETHTransferNotAllowed();
+    /// @dev Error thrown when a push hook fails
+    /// @dev Selector 0x4c2f04a4
+    error HookFailed();
 
     // event Tip(address indexed from, address indexed to, uint256 amount);
 
@@ -162,10 +165,16 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         }
     }
 
-    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
-        external
-        returns (uint256 requestId)
-    {
+    /// @notice Emits the submitted user objective to be executed by a stxn hub
+    /// @param _userObjective The user objective to be executed
+    /// @param _additionalData Additional data to be used in the execution
+    /// @param _pushHook Optional hook to be executed after emitting the objective
+    /// @return requestId Unique identifier for the pushed objective
+    function pushUserObjective(
+        UserObjective calldata _userObjective,
+        AdditionalData[] calldata _additionalData,
+        CallObject calldata _pushHook
+    ) external returns (uint256 requestId) {
         requestId = uint256(
             keccak256(
                 abi.encodePacked(
@@ -173,9 +182,15 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
                 )
             )
         );
+
         emit UserObjectivePushed(
             requestId, _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
         );
+
+        if (_pushHook.addr != address(0) && _pushHook.callvalue.length > 0) {
+            (bool success,) = _pushHook.addr.call{gas: _pushHook.gas}(_pushHook.callvalue);
+            if (!success) revert HookFailed();
+        }
     }
 
     /// @notice Fetches the index of a given CallObject from the callIndex store

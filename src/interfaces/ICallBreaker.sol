@@ -57,7 +57,9 @@ interface ICallBreaker {
         AdditionalData[] calldata _mevTimeData
     ) external payable;
 
-    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
-        external
-        returns (uint256 requestId);
+    function pushUserObjective(
+        UserObjective calldata _userObjective,
+        AdditionalData[] calldata _additionalData,
+        CallObject calldata pushHook
+    ) external returns (uint256 requestId);
 }

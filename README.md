@@ -1,4 +1,3 @@
-
 # STXN Infrastructure
 
 A modular and extensible transaction execution system built to power scalable smart interactions in the Web3 ecosystem. STXN 2.0 leverages off-chain computation, DAG-based execution, smart account abstraction (EIP-7702), and a solver marketplace for cost-efficient, user-friendly, and interoperable infrastructure.
@@ -102,6 +101,52 @@ forge build
 
 # Run Tests
 forge test
+```
+
+---
+
+## 🚀 Deployment & Verification
+
+### Deployment
+Use the deployment script to deploy contracts:
+```bash
+./deploy.sh <NETWORK> <CONTRACT_NAME> <VERSION>
+```
+
+Parameters:
+- `<NETWORK>`: Target network (e.g., `LESTNET`, `MAINNET`, `SEPOLIA`)
+- `<CONTRACT_NAME>`: Name of the contract to deploy (e.g., `CallBreaker`, `LaminatedAccount`)
+- `<VERSION>`: Version number for the deployment
+
+Example:
+```bash
+./deploy.sh LESTNET CallBreaker 3
+```
+
+### Contract Verification
+
+#### Lestnet
+To verify contracts on Lestnet:
+```bash
+forge verify-contract --rpc-url https://service.lestnet.org <CONTRACT_ADDRESS> <CONTRACT_NAME> --verifier blockscout --verifier-url https://explore.lestnet.org/api/
+```
+
+#### Other Networks
+For other networks, use the following command:
+```bash
+forge verify-contract <CONTRACT_ADDRESS> <CONTRACT_PATH>:<CONTRACT_NAME> --chain CHAIN_ID --watch --etherscan-api-key ETHERSCAN_API_KEY
+```
+
+Replace:
+- `<CONTRACT_ADDRESS>` with the deployed contract address
+- `<CONTRACT_PATH>` with the path to your contract (e.g., `src/core/LaminatedAccount.sol`)
+- `<CONTRACT_NAME>` with the name of your contract (e.g., `LaminatedAccount`)
+- `CHAIN_ID` with the target network's chain ID
+- `ETHERSCAN_API_KEY` with your Etherscan API key
+
+Example for verifying a LaminatedAccount contract:
+```bash
+forge verify-contract 0x1234...5678 src/core/LaminatedAccount.sol:LaminatedAccount --chain 1 --watch --etherscan-api-key YOUR_API_KEY
 ```
 
 ---
