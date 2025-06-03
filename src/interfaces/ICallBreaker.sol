@@ -59,7 +59,6 @@ interface ICallBreaker {
 
     function pushUserObjective(
         UserObjective calldata _userObjective,
-        AdditionalData[] calldata _additionalData,
-        CallObject calldata pushHook
+        AdditionalData[] calldata _additionalData
     ) external returns (uint256 requestId);
 }
