@@ -22,6 +22,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @notice flag to identify if the call indices have been set
     bool private callObjIndicesSet;
 
+    /// @notice The sequence counter for published user objectives
+    uint256 sequenceCounter;
+
     /// @notice The list of user objectives stored in a grid format
     CallObject[][] public callGrid;
 
@@ -94,7 +97,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     event CallIndicesPopulated();
 
     event UserObjectivePushed(
-        uint256 indexed requestId,
+        bytes32 indexed requestId,
+        uint256 indexed sequenceCounter,
         bytes indexed appId,
         uint256 indexed chainId,
         uint256 blockNumber,
@@ -176,33 +180,38 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @param _userObjective The user objective to be executed
     /// @param _additionalData Additional data to be used in the execution
     /// @return requestId Unique identifier for the pushed objective
-    function pushUserObjective(
-        UserObjective calldata _userObjective,
-        AdditionalData[] calldata _additionalData
-    ) external returns (uint256 requestId) {
-        requestId = uint256(
-            keccak256(
-                abi.encodePacked(
-                    msg.sender, _userObjective.chainId, _userObjective.nonce, block.timestamp, block.prevrandao
-                )
-            )
+    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
+        external
+        payable
+        returns (bytes32 requestId)
+    {
+        requestId = keccak256(
+            abi.encodePacked(msg.sender, _userObjective.chainId, sequenceCounter, block.timestamp, block.prevrandao)
         );
 
-        CallObject memory preApprovalCallObj = _preApprovalCallObjs[_userObjective.appId];
+        sequenceCounter++;
 
+        CallObject memory preApprovalCallObj = _preApprovalCallObjs[_userObjective.appId];
         if (preApprovalCallObj.addr != address(0) && preApprovalCallObj.callvalue.length > 0) {
-            (bool success, bytes memory returnData) =
-                preApprovalCallObj.addr.call{gas: preApprovalCallObj.gas}(preApprovalCallObj.callvalue);
+            (bool success, bytes memory returnData) = preApprovalCallObj.addr.call{
+                gas: preApprovalCallObj.gas,
+                value: msg.value
+            }(preApprovalCallObj.callvalue);
             if (!abi.decode(returnData, (bool)) || !success) {
                 revert PreApprovalFailed(_userObjective.appId);
             }
         }
-        
+
         emit UserObjectivePushed(
-            requestId, _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
+            requestId,
+            sequenceCounter,
+            _userObjective.appId,
+            _userObjective.chainId,
+            block.number,
+            _userObjective,
+            _additionalData
         );
     }
-
 
     /// @notice Sets a pre-approved CallObject for a given app ID
     /// @param appId The app ID to set the pre-approved CallObject for

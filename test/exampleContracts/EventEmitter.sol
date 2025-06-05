@@ -2,8 +2,6 @@
 pragma solidity 0.8.28;
 
 contract EventEmitter {
-    bool public isEventEmitted;
-
     event TestEvent(uint256 value);
 
     function emitEvent(uint256 value) external {
@@ -15,10 +13,9 @@ contract EventEmitter {
         return value;
     }
 
-    function emitEventWithBoolReturn(uint256 value) external returns (bool) {
-        isEventEmitted = true;
+    function emitEventWithTrueReturn(uint256 value) external payable returns (bool) {
         emit TestEvent(value);
-        return isEventEmitted;
+        return true;
     }
 
     function emitEventWithFalseReturn(uint256 value) external returns (bool) {

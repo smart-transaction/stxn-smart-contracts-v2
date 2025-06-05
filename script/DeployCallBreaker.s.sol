@@ -29,7 +29,9 @@ contract DeployCallBreaker is BaseDeployer {
             vm.startBroadcast(deployerPrivateKey);
 
             address contractAddress = address(new CallBreaker{salt: salt}(owner));
-            address computedAddress = _computeCreate2Address(salt, hashInitCode(abi.encodePacked(type(CallBreaker).creationCode, abi.encode(owner))));
+            address computedAddress = _computeCreate2Address(
+                salt, hashInitCode(abi.encodePacked(type(CallBreaker).creationCode, abi.encode(owner)))
+            );
             require(contractAddress == computedAddress, "Contract address mismatch");
             console.log("CallBreaker deployed to:", contractAddress);
 

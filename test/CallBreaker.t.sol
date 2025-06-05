@@ -284,7 +284,7 @@ contract CallBreakerTest is Test {
             amount: 0,
             gas: 100000,
             addr: address(eventEmitter),
-            callvalue: abi.encodeWithSignature("emitEventWithBoolReturn(uint256)", 1),
+            callvalue: abi.encodeWithSignature("emitEventWithTrueReturn(uint256)", 1),
             returnvalue: "",
             skippable: false,
             verifiable: false,
@@ -295,17 +295,10 @@ contract CallBreakerTest is Test {
 
         vm.prank(user);
         vm.expectEmit(false, true, true, true);
-        emit CallBreaker.UserObjectivePushed(
-            0,
-            userObjective.appId,
-            101,
-            block.number,
-            userObjective,
-            additionalData
-        );
-        callBreaker.pushUserObjective(userObjective, additionalData);
+        emit CallBreaker.UserObjectivePushed(0, userObjective.appId, 101, block.number, userObjective, additionalData);
+        callBreaker.pushUserObjective{value: 0.1 ether}(userObjective, additionalData);
 
-        assertEq(eventEmitter.isEventEmitted(), true);
+        assertEq(address(eventEmitter).balance, 0.1 ether);
     }
 
     function testPushUserObjectiveWithPreApprovedCallObjFail() public {
@@ -330,17 +323,8 @@ contract CallBreakerTest is Test {
 
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(CallBreaker.PreApprovalFailed.selector, userObjective.appId));
-        emit CallBreaker.UserObjectivePushed(
-            0,
-            userObjective.appId,
-            101,
-            block.number,
-            userObjective,
-            additionalData
-        );
+        emit CallBreaker.UserObjectivePushed(0, userObjective.appId, 101, block.number, userObjective, additionalData);
         callBreaker.pushUserObjective(userObjective, additionalData);
-
-        assertEq(eventEmitter.isEventEmitted(), false);
     }
 
     function _prepareInputsForCounter(uint256 numValues, bool userReturn)
