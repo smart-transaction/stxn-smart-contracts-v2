@@ -9,16 +9,18 @@ contract DeployCallBreaker is BaseDeployer {
     function run() external {
         uint256 deployerPrivateKey = _getPrivateKey();
         bytes32 _salt = _generateSalt();
-        _deploy(_salt, deployerPrivateKey);
+        address owner = _getOwner();
+        _deploy(_salt, deployerPrivateKey, owner);
     }
 
     function run(uint256 salt) external {
         uint256 deployerPrivateKey = _getPrivateKey();
+        address owner = _getOwner();
         bytes32 _salt = bytes32(salt);
-        _deploy(_salt, deployerPrivateKey);
+        _deploy(_salt, deployerPrivateKey, owner);
     }
 
-    function _deploy(bytes32 salt, uint256 deployerPrivateKey) internal {
+    function _deploy(bytes32 salt, uint256 deployerPrivateKey, address owner) internal {
         for (uint256 i = 0; i < networks.length; i++) {
             NetworkConfig memory config = networks[i];
             console.log("Deploying CallBreaker to:", config.name);
@@ -26,8 +28,10 @@ contract DeployCallBreaker is BaseDeployer {
             vm.createSelectFork(config.rpcUrl);
             vm.startBroadcast(deployerPrivateKey);
 
-            address contractAddress = address(new CallBreaker{salt: salt}());
-            address computedAddress = _computeCreate2Address(salt, hashInitCode(type(CallBreaker).creationCode));
+            address contractAddress = address(new CallBreaker{salt: salt}(owner));
+            address computedAddress = _computeCreate2Address(
+                salt, hashInitCode(abi.encodePacked(type(CallBreaker).creationCode, abi.encode(owner)))
+            );
             require(contractAddress == computedAddress, "Contract address mismatch");
             console.log("CallBreaker deployed to:", contractAddress);
 

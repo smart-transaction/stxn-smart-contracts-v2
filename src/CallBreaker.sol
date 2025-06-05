@@ -2,10 +2,11 @@
 pragma solidity 0.8.28;
 
 import {ICallBreaker, CallObject, UserObjective, AdditionalData} from "src/interfaces/ICallBreaker.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract CallBreaker is ICallBreaker, ReentrancyGuard {
+contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
 
     bytes32 public constant EMPTY_DATA = keccak256(bytes(""));
@@ -20,6 +21,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
 
     /// @notice flag to identify if the call indices have been set
     bool private callObjIndicesSet;
+
+    /// @notice The sequence counter for published user objectives
+    uint256 public sequenceCounter;
 
     /// @notice The list of user objectives stored in a grid format
     CallObject[][] public callGrid;
@@ -39,6 +43,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @notice stores the return values of callObjs to be used by other dependend CallObjs
     bytes[] public callObjReturnKeys;
     mapping(bytes => bytes) public callObjReturn;
+
+    /// @notice mapping of app id to its pre-approval CallObjects
+    mapping(bytes => CallObject) private _preApprovalCallObjs;
 
     /// @dev Error thrown when there is not enough Ether left
     /// @dev Selector 0x75483b53
@@ -74,7 +81,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     error DirectETHTransferNotAllowed();
     /// @dev Error thrown when a push hook fails
     /// @dev Selector 0x4c2f04a4
-    error HookFailed();
+    error PreApprovalFailed(bytes appId);
 
     // event Tip(address indexed from, address indexed to, uint256 amount);
 
@@ -90,7 +97,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     event CallIndicesPopulated();
 
     event UserObjectivePushed(
-        uint256 indexed requestId,
+        bytes32 indexed requestId,
+        uint256 sequenceCounter,
         bytes indexed appId,
         uint256 indexed chainId,
         uint256 blockNumber,
@@ -98,8 +106,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
         AdditionalData[] additionalData
     );
 
+    /// @notice Emitted when a pre-approved CallObject is set
+    event PreApprovalCallObjSet(bytes indexed appId, CallObject callObj);
+
     /// @notice Initializes the contract; sets the initial portal status to closed
-    constructor() {}
+    constructor(address _owner) Ownable(_owner) {}
 
     /// @notice Prevents direct native currency transfers to the contract
     receive() external payable {
@@ -168,29 +179,53 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard {
     /// @notice Emits the submitted user objective to be executed by a stxn hub
     /// @param _userObjective The user objective to be executed
     /// @param _additionalData Additional data to be used in the execution
-    /// @param _pushHook Optional hook to be executed after emitting the objective
     /// @return requestId Unique identifier for the pushed objective
-    function pushUserObjective(
-        UserObjective calldata _userObjective,
-        AdditionalData[] calldata _additionalData,
-        CallObject calldata _pushHook
-    ) external returns (uint256 requestId) {
-        requestId = uint256(
-            keccak256(
-                abi.encodePacked(
-                    msg.sender, _userObjective.chainId, _userObjective.nonce, block.timestamp, block.prevrandao
-                )
-            )
+    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
+        external
+        payable
+        returns (bytes32 requestId)
+    {
+        requestId = keccak256(
+            abi.encodePacked(msg.sender, _userObjective.chainId, sequenceCounter, block.timestamp, block.prevrandao)
         );
+
+        CallObject memory preApprovalCallObj = _preApprovalCallObjs[_userObjective.appId];
+        if (preApprovalCallObj.addr != address(0) && preApprovalCallObj.callvalue.length > 0) {
+            (bool success, bytes memory returnData) = preApprovalCallObj.addr.call{
+                gas: preApprovalCallObj.gas,
+                value: msg.value
+            }(preApprovalCallObj.callvalue);
+            if (returnData.length == 0 || !abi.decode(returnData, (bool)) || !success) {
+                revert PreApprovalFailed(_userObjective.appId);
+            }
+        }
 
         emit UserObjectivePushed(
-            requestId, _userObjective.appId, _userObjective.chainId, block.number, _userObjective, _additionalData
+            requestId,
+            sequenceCounter,
+            _userObjective.appId,
+            _userObjective.chainId,
+            block.number,
+            _userObjective,
+            _additionalData
         );
 
-        if (_pushHook.addr != address(0) && _pushHook.callvalue.length > 0) {
-            (bool success,) = _pushHook.addr.call{gas: _pushHook.gas}(_pushHook.callvalue);
-            if (!success) revert HookFailed();
-        }
+        sequenceCounter++;
+    }
+
+    /// @notice Sets a pre-approved CallObject for a given app ID
+    /// @param appId The app ID to set the pre-approved CallObject for
+    /// @param callObj The CallObject to pre-approve
+    function setPreApprovedCallObj(bytes calldata appId, CallObject calldata callObj) external onlyOwner {
+        _preApprovalCallObjs[appId] = callObj;
+        emit PreApprovalCallObjSet(appId, callObj);
+    }
+
+    /// @notice Gets the pre-approved CallObject for a given app ID
+    /// @param appId The app ID to get the pre-approved CallObject for
+    /// @return The pre-approved CallObject
+    function preApprovedCallObjs(bytes calldata appId) external view returns (CallObject memory) {
+        return _preApprovalCallObjs[appId];
     }
 
     /// @notice Fetches the index of a given CallObject from the callIndex store

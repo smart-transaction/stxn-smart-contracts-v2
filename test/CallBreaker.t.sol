@@ -15,12 +15,13 @@ contract CallBreakerTest is Test {
     address public user2 = vm.addr(0x2);
     address public user3 = vm.addr(0x3);
     address public solver = address(0x4);
+    address public owner = address(0x5);
 
     uint256[] public userPrivateKeys = [0x1, 0x2, 0x3];
     address[] public users = [user, user2, user3];
 
     function setUp() public {
-        callBreaker = new CallBreaker();
+        callBreaker = new CallBreaker(owner);
 
         // deploy test contracts
         counter = new Counter();
@@ -221,7 +222,36 @@ contract CallBreakerTest is Test {
         (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
             _prepareInputsForSignalUserObjective();
 
-        CallObject memory hook = CallObject({
+        uint256 sequenceCounter = callBreaker.sequenceCounter();
+
+        vm.prank(user);
+        vm.expectEmit(false, true, true, true);
+        emit CallBreaker.UserObjectivePushed(0, sequenceCounter, userObjective.appId, userObjective.chainId, block.number, userObjective, additionalData);
+        callBreaker.pushUserObjective{value: 0.1 ether}(userObjective, additionalData);
+    }
+
+    function testSetPreApprovedCallObj() public {
+        CallObject memory callObj = CallObject({
+            salt: 0,
+            amount: 0,
+            gas: 100000,
+            addr: address(eventEmitter),
+            callvalue: abi.encodeWithSignature("emitEvent(uint256)", 1),
+            returnvalue: "",
+            skippable: false,
+            verifiable: false,
+            exposeReturn: false
+        });
+        vm.prank(owner);
+        callBreaker.setPreApprovedCallObj(hex"01", callObj);
+
+        CallObject memory preApprovedCallObj = callBreaker.preApprovedCallObjs(hex"01");
+        assertEq(preApprovedCallObj.addr, address(eventEmitter));
+        assertEq(preApprovedCallObj.callvalue, abi.encodeWithSignature("emitEvent(uint256)", 1));
+    }
+
+    function testSetPreApprovedCallObjFail() public {
+        CallObject memory callObj = CallObject({
             salt: 0,
             amount: 0,
             gas: 100000,
@@ -233,17 +263,64 @@ contract CallBreakerTest is Test {
             exposeReturn: false
         });
 
-        vm.prank(solver);
+        vm.prank(user);
+        vm.expectRevert();
+        callBreaker.setPreApprovedCallObj(hex"01", callObj);
+    }
+
+    function testPushUserObjectiveWithPreApprovedCallObj() public {
+        (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
+            _prepareInputsForSignalUserObjective();
+
+        userObjective.appId = hex"01";
+
+        CallObject memory callObj = CallObject({
+            salt: 0,
+            amount: 0,
+            gas: 100000,
+            addr: address(eventEmitter),
+            callvalue: abi.encodeWithSignature("emitEventWithTrueReturn(uint256)", 1),
+            returnvalue: "",
+            skippable: false,
+            verifiable: false,
+            exposeReturn: false
+        });
+        vm.prank(owner);
+        callBreaker.setPreApprovedCallObj(userObjective.appId, callObj);
+
+        uint256 sequenceCounter = callBreaker.sequenceCounter();
+
+        vm.prank(user);
         vm.expectEmit(false, true, true, true);
-        emit CallBreaker.UserObjectivePushed(
-            0, // ignored: requestId
-            userObjective.appId,
-            userObjective.chainId,
-            block.number,
-            userObjective,
-            additionalData
-        );
-        callBreaker.pushUserObjective(userObjective, additionalData, hook);
+        emit CallBreaker.UserObjectivePushed(0, sequenceCounter, userObjective.appId, userObjective.chainId, block.number, userObjective, additionalData);
+        callBreaker.pushUserObjective{value: 0.1 ether}(userObjective, additionalData);
+
+        assertEq(address(eventEmitter).balance, 0.1 ether);
+    }
+
+    function testPushUserObjectiveWithPreApprovedCallObjFail() public {
+        (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
+            _prepareInputsForSignalUserObjective();
+
+        userObjective.appId = hex"01";
+
+        CallObject memory callObj = CallObject({
+            salt: 0,
+            amount: 0,
+            gas: 100000,
+            addr: address(eventEmitter),
+            callvalue: abi.encodeWithSignature("emitEventWithFalseReturn(uint256)", 1),
+            returnvalue: "",
+            skippable: false,
+            verifiable: false,
+            exposeReturn: false
+        });
+        vm.prank(owner);
+        callBreaker.setPreApprovedCallObj(userObjective.appId, callObj);
+
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(CallBreaker.PreApprovalFailed.selector, userObjective.appId));
+        callBreaker.pushUserObjective(userObjective, additionalData);
     }
 
     function _prepareInputsForCounter(uint256 numValues, bool userReturn)

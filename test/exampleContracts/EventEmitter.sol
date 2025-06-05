@@ -12,4 +12,14 @@ contract EventEmitter {
         emit TestEvent(value);
         return value;
     }
+
+    function emitEventWithTrueReturn(uint256 value) external payable returns (bool) {
+        emit TestEvent(value);
+        return true;
+    }
+
+    function emitEventWithFalseReturn(uint256 value) external returns (bool) {
+        emit TestEvent(value);
+        return false;
+    }
 }

@@ -137,4 +137,8 @@ abstract contract BaseDeployer is Script {
     function _generateSalt() internal returns (bytes32) {
         return bytes32(uint256(vm.randomUint()));
     }
+
+    function _getOwner() internal view returns (address) {
+        return vm.envAddress("OWNER_ADDRESS");
+    }
 }
