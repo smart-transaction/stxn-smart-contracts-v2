@@ -23,7 +23,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     bool private callObjIndicesSet;
 
     /// @notice The sequence counter for published user objectives
-    uint256 sequenceCounter;
+    uint256 public sequenceCounter;
 
     /// @notice The list of user objectives stored in a grid format
     CallObject[][] public callGrid;
@@ -98,7 +98,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
     event UserObjectivePushed(
         bytes32 indexed requestId,
-        uint256 indexed sequenceCounter,
+        uint256 sequenceCounter,
         bytes indexed appId,
         uint256 indexed chainId,
         uint256 blockNumber,
@@ -189,8 +189,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             abi.encodePacked(msg.sender, _userObjective.chainId, sequenceCounter, block.timestamp, block.prevrandao)
         );
 
-        sequenceCounter++;
-
         CallObject memory preApprovalCallObj = _preApprovalCallObjs[_userObjective.appId];
         if (preApprovalCallObj.addr != address(0) && preApprovalCallObj.callvalue.length > 0) {
             (bool success, bytes memory returnData) = preApprovalCallObj.addr.call{
@@ -211,6 +209,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             _userObjective,
             _additionalData
         );
+
+        sequenceCounter++;
     }
 
     /// @notice Sets a pre-approved CallObject for a given app ID

@@ -222,17 +222,12 @@ contract CallBreakerTest is Test {
         (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
             _prepareInputsForSignalUserObjective();
 
+        uint256 sequenceCounter = callBreaker.sequenceCounter();
+
         vm.prank(user);
         vm.expectEmit(false, true, true, true);
-        emit CallBreaker.UserObjectivePushed(
-            0, // ignored: requestId
-            userObjective.appId,
-            userObjective.chainId,
-            block.number,
-            userObjective,
-            additionalData
-        );
-        callBreaker.pushUserObjective(userObjective, additionalData);
+        emit CallBreaker.UserObjectivePushed(0, sequenceCounter, userObjective.appId, userObjective.chainId, block.number, userObjective, additionalData);
+        callBreaker.pushUserObjective{value: 0.1 ether}(userObjective, additionalData);
     }
 
     function testSetPreApprovedCallObj() public {
@@ -293,9 +288,11 @@ contract CallBreakerTest is Test {
         vm.prank(owner);
         callBreaker.setPreApprovedCallObj(userObjective.appId, callObj);
 
+        uint256 sequenceCounter = callBreaker.sequenceCounter();
+
         vm.prank(user);
         vm.expectEmit(false, true, true, true);
-        emit CallBreaker.UserObjectivePushed(0, userObjective.appId, 101, block.number, userObjective, additionalData);
+        emit CallBreaker.UserObjectivePushed(0, sequenceCounter, userObjective.appId, userObjective.chainId, block.number, userObjective, additionalData);
         callBreaker.pushUserObjective{value: 0.1 ether}(userObjective, additionalData);
 
         assertEq(address(eventEmitter).balance, 0.1 ether);
@@ -323,7 +320,6 @@ contract CallBreakerTest is Test {
 
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(CallBreaker.PreApprovalFailed.selector, userObjective.appId));
-        emit CallBreaker.UserObjectivePushed(0, userObjective.appId, 101, block.number, userObjective, additionalData);
         callBreaker.pushUserObjective(userObjective, additionalData);
     }
 
