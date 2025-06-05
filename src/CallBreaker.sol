@@ -195,7 +195,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
                 gas: preApprovalCallObj.gas,
                 value: msg.value
             }(preApprovalCallObj.callvalue);
-            if (!abi.decode(returnData, (bool)) || !success) {
+            if (returnData.length == 0 || !abi.decode(returnData, (bool)) || !success) {
                 revert PreApprovalFailed(_userObjective.appId);
             }
         }
