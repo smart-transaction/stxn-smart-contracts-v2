@@ -19,6 +19,14 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     bytes32 public constant CALL_ORDER_STORAGE_SLOT =
         bytes32(uint256(keccak256("CallBreaker.CALL_ORDER_STORAGE_SLOT")) - 1);
 
+    /// @notice The slot at which call grid lengths are stored for optimization
+    bytes32 public constant CALL_GRID_LENGTHS_SLOT =
+        bytes32(uint256(keccak256("CallBreaker.CALL_GRID_LENGTHS_SLOT")) - 1);
+
+    /// @notice The slot at which call return values are stored
+    bytes32 public constant CALL_RETURN_VALUES_SLOT =
+        bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_VALUES_SLOT")) - 1);
+
     /// @notice flag to identify if the call indices have been set
     bool private callObjIndicesSet;
 
@@ -39,10 +47,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
     /// @notice mapping of callId to call index
     mapping(bytes32 => uint256[]) public callObjIndices;
-
-    /// @notice stores the return values of callObjs to be used by other dependend CallObjs
-    bytes[] public callObjReturnKeys;
-    mapping(bytes => bytes) public callObjReturn;
 
     /// @notice mapping of app id to its pre-approval CallObjects
     mapping(bytes => CallObject) private _preApprovalCallObjs;
@@ -287,6 +291,25 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         _storeOrderOfExecution(orderOfExecution);
         _populateAdditionalDataStore(mevTimeData);
+        _populateCallGridLengths();
+    }
+
+    /// @notice Populates call grid lengths in transient storage for optimization
+    function _populateCallGridLengths() internal {
+        uint256 slot = uint256(CALL_GRID_LENGTHS_SLOT);
+        uint256 gridLength = callGrid.length;
+        
+        assembly ("memory-safe") {
+            tstore(slot, gridLength)
+        }
+
+        for (uint256 i = 0; i < gridLength; i++) {
+            uint256 len = callGrid[i].length;
+            uint256 lenSlot = slot + (i * 32) + 32; // Each length is 32 bytes
+            assembly ("memory-safe") {
+                tstore(lenSlot, len)
+            }
+        }
     }
 
     function _executeAndVerifyCalls(
@@ -330,11 +353,26 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
             // store returned values if exposed for use by other CallObjs
             if (callObj.exposeReturn) {
-                bytes memory key = abi.encode(callObj);
-                callObjReturn[key] = returnFromExecution; // TODO Save using tstore
-                callObjReturnKeys.push(key);
+                bytes32 key = keccak256(abi.encode(callObj));
+                uint256 slot = uint256(keccak256(abi.encodePacked(CALL_RETURN_VALUES_SLOT, key)));
+                assembly ("memory-safe") {
+                    tstore(slot, returnFromExecution)
+                }
             }
         }
+    }
+
+    /// @notice Retrieves a return value from transient storage
+    /// @param callObj The CallObject whose return value to retrieve
+    /// @return The return value stored for this call object
+    function getReturnValue(CallObject memory callObj) external view returns (bytes memory) {
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 slot = uint256(keccak256(abi.encodePacked(CALL_RETURN_VALUES_SLOT, key)));
+        bytes memory returnValue;
+        assembly ("memory-safe") {
+            returnValue := tload(slot)
+        }
+        return returnValue;
     }
 
     /// @notice Sets the index of the currently executing call.
@@ -386,7 +424,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _cleanUpStorage() internal {
         _cleanUpAdditionalData();
         _cleanUpCallIndices();
-        _cleanUpCallReturns();
     }
 
     function _cleanUpAdditionalData() internal {
@@ -410,16 +447,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
                 }
             }
             callObjIndicesSet = false;
-        }
-    }
-
-    function _cleanUpCallReturns() internal {
-        uint256 keyListLength = callObjReturnKeys.length;
-        if (keyListLength > 0) {
-            for (uint256 i; i < keyListLength; i++) {
-                delete callObjReturn[callObjReturnKeys[i]];
-            }
-            delete callObjReturnKeys;
         }
     }
 
@@ -476,9 +503,19 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _resolveFlatIndex(uint256 flatIndex) internal view returns (uint256, uint256) {
         uint256 runningIndex = 0;
 
-        // TODO: avoid callGrid[i].length calculation by storing these values in tstore
-        for (uint256 u_index = 0; u_index < callGrid.length; u_index++) {
-            uint256 len = callGrid[u_index].length;
+        // Use transient storage to store call grid lengths for optimization
+        uint256 slot = uint256(CALL_GRID_LENGTHS_SLOT);
+        uint256 gridLength;
+        assembly ("memory-safe") {
+            gridLength := tload(slot)
+        }
+
+        for (uint256 u_index = 0; u_index < gridLength; u_index++) {
+            uint256 len;
+            uint256 lenSlot = slot + (u_index * 32) + 32; // Each length is 32 bytes
+            assembly ("memory-safe") {
+                len := tload(lenSlot)
+            }
             if (flatIndex < runningIndex + len) {
                 uint256 c_index = flatIndex - runningIndex;
                 return (u_index, c_index);
