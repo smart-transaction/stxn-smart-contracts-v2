@@ -346,19 +346,20 @@ contract CallBreakerTest is Test {
         assertEq(callBreaker.hasZeroLengthReturnValue(callObj), false);
 
         // Execute the call and verify it stores the return value
-        (bool success, ) = callObj.addr.call{gas: callObj.gas, value: callObj.amount}(callObj.callvalue);
+        (bool success,) = callObj.addr.call{gas: callObj.gas, value: callObj.amount}(callObj.callvalue);
         assertTrue(success);
 
         // Since we're not in the context of executeAndVerify, we need to manually test the storage
         // This test verifies the storage mechanism works correctly
         bytes32 key = keccak256(abi.encode(callObj));
-        uint256 lengthSlot = uint256(keccak256(abi.encodePacked(
-            "\x19\x01",
-            bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_LENGTHS_SLOT")) - 1),
-            key,
-            uint256(0)
-        )));
-        
+        uint256 lengthSlot = uint256(
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01", bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_LENGTHS_SLOT")) - 1), key, uint256(0)
+                )
+            )
+        );
+
         // The length should be 0 since we haven't stored anything yet
         uint256 length;
         assembly ("memory-safe") {

@@ -370,12 +370,16 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @return The computed slot
     function _computeSafeSlot(bytes32 baseSlot, bytes32 key, uint256 index) internal pure returns (uint256) {
         // Use a more collision-resistant approach with domain separation
-        return uint256(keccak256(abi.encodePacked(
-            "\x19\x01", // Domain separator
-            baseSlot,
-            key,
-            index
-        )));
+        return uint256(
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01", // Domain separator
+                    baseSlot,
+                    key,
+                    index
+                )
+            )
+        );
     }
 
     /// @notice Checks if a return value is too large for transient storage
@@ -391,7 +395,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _storeReturnValue(bytes32 key, bytes memory returnValue) internal {
         uint256 length = returnValue.length;
         uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
-        
+
         // Handle zero-length values by storing a special marker
         if (length == 0) {
             assembly ("memory-safe") {
@@ -399,7 +403,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             }
             return;
         }
-        
+
         // Check if value is too large for transient storage
         if (_isReturnValueTooLarge(returnValue)) {
             // For large values, store only a hash reference to save gas
@@ -414,19 +418,19 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             }
             return;
         }
-        
+
         uint256 numSlots = (length + 31) / 32; // Calculate number of 32-byte slots needed
-        
+
         // Store the length
         assembly ("memory-safe") {
             tstore(lengthSlot, length)
         }
-        
+
         // Store the data in chunks of 32 bytes
         for (uint256 i = 0; i < numSlots; i++) {
             uint256 slot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, i);
             bytes32 chunk;
-            
+
             if (i * 32 + 32 <= length) {
                 // Full 32-byte chunk
                 assembly ("memory-safe") {
@@ -443,7 +447,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
                     chunk := and(chunk, mask)
                 }
             }
-            
+
             assembly ("memory-safe") {
                 tstore(slot, chunk)
             }
@@ -465,12 +469,12 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         if (length == 0) {
             return new bytes(0); // Unset value
         }
-        
+
         // Check for special marker for zero-length return values
         if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF) {
             return new bytes(0); // Zero-length return value
         }
-        
+
         // Check for special marker for large values
         if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE) {
             revert("Return value too large for retrieval - use getReturnValueHash instead");
@@ -478,14 +482,14 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         uint256 numSlots = (length + 31) / 32;
         bytes memory returnValue = new bytes(length);
-        
+
         for (uint256 i = 0; i < numSlots; i++) {
             uint256 slot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, i);
             bytes32 chunk;
             assembly ("memory-safe") {
                 chunk := tload(slot)
             }
-            
+
             uint256 offset = i * 32;
             if (offset + 32 <= length) {
                 // Full 32-byte chunk
@@ -503,7 +507,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
                 }
             }
         }
-        
+
         return returnValue;
     }
 
@@ -517,7 +521,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         assembly ("memory-safe") {
             length := tload(lengthSlot)
         }
-        
+
         // Check for special marker for large values
         if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE) {
             uint256 hashSlot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, 0);
@@ -527,7 +531,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             }
             return valueHash;
         }
-        
+
         revert("Return value is not stored as hash");
     }
 
