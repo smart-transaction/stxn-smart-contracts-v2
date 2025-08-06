@@ -399,7 +399,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         // Handle zero-length values by storing a special marker
         if (length == 0) {
             assembly ("memory-safe") {
-                tstore(lengthSlot, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF) // Special marker for zero-length
+                tstore(lengthSlot, ZERO_LENGTH_MARKER) // Special marker for zero-length
             }
             return;
         }
