@@ -9,6 +9,10 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
 
+    uint256 public constant MAX_RETURN_VALUE_SIZE = 1024;
+
+    uint256 public constant LARGE_VALUE_MARKER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE;
+
     bytes32 public constant EMPTY_DATA = keccak256(bytes(""));
 
     /// @notice The slot at which the call currently being executed is stored
@@ -399,7 +403,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         // Handle zero-length values by storing a special marker
         if (length == 0) {
             assembly ("memory-safe") {
-                tstore(lengthSlot, ZERO_LENGTH_MARKER) // Special marker for zero-length
+                tstore(lengthSlot, LARGE_VALUE_MARKER) // marker for zero-length
             }
             return;
         }
