@@ -409,7 +409,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             // For large values, store only a hash reference to save gas
             bytes32 valueHash = keccak256(returnValue);
             assembly ("memory-safe") {
-                tstore(lengthSlot, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE) // Special marker for large values
+                tstore(lengthSlot, LARGE_VALUE_MARKER) // Special marker for large values
             }
             // Store the hash in the first data slot
             uint256 hashSlot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, 0);
