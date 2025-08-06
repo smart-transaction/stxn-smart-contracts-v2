@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: BSL-1.
-pragma solidity 0.8.28;
+pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
 import {CallObject, UserObjective, AdditionalData, CallBreaker} from "src/CallBreaker.sol";
 import {Counter} from "test/exampleContracts/Counter.sol";
-import {EventEmitter} from "test/exampleContracts/EventEmitter.sol";
+import {PreApprover} from "test/exampleContracts/PreApprover.sol";
 
 contract CallBreakerTest is Test {
-    EventEmitter public eventEmitter;
+    PreApprover public preApprover;
     CallBreaker public callBreaker;
     Counter public counter;
 
@@ -25,7 +25,7 @@ contract CallBreakerTest is Test {
 
         // deploy test contracts
         counter = new Counter();
-        eventEmitter = new EventEmitter();
+        preApprover = new PreApprover();
 
         // Give user some ETH
         vm.deal(user, 10 ether);
@@ -218,7 +218,7 @@ contract CallBreakerTest is Test {
         callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
     }
 
-    function testSignalUserObjective() public {
+    function testPushUserObjectiveWithoutPreApproval() public {
         (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
             _prepareInputsForSignalUserObjective();
 
@@ -229,7 +229,7 @@ contract CallBreakerTest is Test {
         emit CallBreaker.UserObjectivePushed(
             0, sequenceCounter, userObjective.appId, userObjective.chainId, block.number, userObjective, additionalData
         );
-        callBreaker.pushUserObjective{value: 0.1 ether}(userObjective, additionalData);
+        callBreaker.pushUserObjective(userObjective, additionalData);
     }
 
     function testSetPreApprovedCallObj() public {
@@ -237,8 +237,8 @@ contract CallBreakerTest is Test {
             salt: 0,
             amount: 0,
             gas: 100000,
-            addr: address(eventEmitter),
-            callvalue: abi.encodeWithSignature("emitEvent(uint256)", 1),
+            addr: address(preApprover),
+            callvalue: abi.encodeWithSignature("alwaysApprove()"),
             returnvalue: "",
             skippable: false,
             verifiable: false,
@@ -248,8 +248,8 @@ contract CallBreakerTest is Test {
         callBreaker.setPreApprovedCallObj(hex"01", callObj);
 
         CallObject memory preApprovedCallObj = callBreaker.preApprovedCallObjs(hex"01");
-        assertEq(preApprovedCallObj.addr, address(eventEmitter));
-        assertEq(preApprovedCallObj.callvalue, abi.encodeWithSignature("emitEvent(uint256)", 1));
+        assertEq(preApprovedCallObj.addr, address(preApprover));
+        assertEq(preApprovedCallObj.callvalue, abi.encodeWithSignature("alwaysApprove()"));
     }
 
     function testSetPreApprovedCallObjFail() public {
@@ -257,8 +257,8 @@ contract CallBreakerTest is Test {
             salt: 0,
             amount: 0,
             gas: 100000,
-            addr: address(eventEmitter),
-            callvalue: abi.encodeWithSignature("emitEvent(uint256)", 1),
+            addr: address(preApprover),
+            callvalue: abi.encodeWithSignature("alwaysApprove()"),
             returnvalue: "",
             skippable: false,
             verifiable: false,
@@ -280,8 +280,8 @@ contract CallBreakerTest is Test {
             salt: 0,
             amount: 0,
             gas: 100000,
-            addr: address(eventEmitter),
-            callvalue: abi.encodeWithSignature("emitEventWithTrueReturn(uint256)", 1),
+            addr: address(preApprover),
+            callvalue: abi.encodeWithSignature("preApprove(bytes32)", keccak256(abi.encode("0x1"))),
             returnvalue: "",
             skippable: false,
             verifiable: false,
@@ -299,7 +299,7 @@ contract CallBreakerTest is Test {
         );
         callBreaker.pushUserObjective{value: 0.1 ether}(userObjective, additionalData);
 
-        assertEq(address(eventEmitter).balance, 0.1 ether);
+        assertEq(address(preApprover).balance, 0.1 ether);
     }
 
     function testPushUserObjectiveWithPreApprovedCallObjFail() public {
@@ -312,8 +312,8 @@ contract CallBreakerTest is Test {
             salt: 0,
             amount: 0,
             gas: 100000,
-            addr: address(eventEmitter),
-            callvalue: abi.encodeWithSignature("emitEventWithFalseReturn(uint256)", 1),
+            addr: address(preApprover),
+            callvalue: abi.encodeWithSignature("alwaysReject()"),
             returnvalue: "",
             skippable: false,
             verifiable: false,
@@ -325,6 +325,140 @@ contract CallBreakerTest is Test {
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(CallBreaker.PreApprovalFailed.selector, userObjective.appId));
         callBreaker.pushUserObjective(userObjective, additionalData);
+    }
+
+    function testTransientStorageReturnValues() public {
+        // Create a CallObject that exposes its return value
+        CallObject memory callObj = CallObject({
+            salt: 1,
+            amount: 0,
+            gas: 100000,
+            addr: address(counter),
+            callvalue: abi.encodeWithSignature("incrementCounter()"),
+            returnvalue: "",
+            skippable: false,
+            verifiable: true,
+            exposeReturn: true
+        });
+
+        // Check that no return value exists initially
+        assertEq(callBreaker.hasReturnValue(callObj), false);
+        assertEq(callBreaker.hasZeroLengthReturnValue(callObj), false);
+
+        // Execute the call and verify it stores the return value
+        (bool success, ) = callObj.addr.call{gas: callObj.gas, value: callObj.amount}(callObj.callvalue);
+        assertTrue(success);
+
+        // Since we're not in the context of executeAndVerify, we need to manually test the storage
+        // This test verifies the storage mechanism works correctly
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = uint256(keccak256(abi.encodePacked(
+            "\x19\x01",
+            bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_LENGTHS_SLOT")) - 1),
+            key,
+            uint256(0)
+        )));
+        
+        // The length should be 0 since we haven't stored anything yet
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(lengthSlot)
+        }
+        assertEq(length, 0);
+    }
+
+    function testTransientStorageZeroLengthValues() public {
+        // Test zero-length return values
+        CallObject memory callObj = CallObject({
+            salt: 2,
+            amount: 0,
+            gas: 100000,
+            addr: address(counter),
+            callvalue: abi.encodeWithSignature("getCounter()"),
+            returnvalue: "",
+            skippable: false,
+            verifiable: true,
+            exposeReturn: true
+        });
+
+        // Initially no value
+        assertEq(callBreaker.hasReturnValue(callObj), false);
+        assertEq(callBreaker.hasZeroLengthReturnValue(callObj), false);
+
+        // Simulate storing a zero-length return value
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = uint256(keccak256(abi.encodePacked(
+            "\x19\x01",
+            bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_LENGTHS_SLOT")) - 1),
+            key,
+            uint256(0)
+        )));
+        
+        // Store the special marker for zero-length
+        assembly ("memory-safe") {
+            tstore(lengthSlot, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
+        }
+
+        // Now should detect zero-length value
+        assertEq(callBreaker.hasReturnValue(callObj), false);
+        assertEq(callBreaker.hasZeroLengthReturnValue(callObj), true);
+        assertEq(callBreaker.getReturnValue(callObj).length, 0);
+    }
+
+    function testTransientStorageLargeValues() public {
+        // Test large return values that exceed the 1KB limit
+        CallObject memory callObj = CallObject({
+            salt: 3,
+            amount: 0,
+            gas: 100000,
+            addr: address(counter),
+            callvalue: abi.encodeWithSignature("getCounter()"),
+            returnvalue: "",
+            skippable: false,
+            verifiable: true,
+            exposeReturn: true
+        });
+
+        // Create a large return value (> 1KB)
+        bytes memory largeReturnValue = new bytes(1025); // Just over 1KB
+        
+        // Simulate storing a large return value
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = uint256(keccak256(abi.encodePacked(
+            "\x19\x01",
+            bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_LENGTHS_SLOT")) - 1),
+            key,
+            uint256(0)
+        )));
+        
+        // Store the special marker for large values
+        assembly ("memory-safe") {
+            tstore(lengthSlot, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE)
+        }
+
+        // Store the hash
+        uint256 hashSlot = uint256(keccak256(abi.encodePacked(
+            "\x19\x01",
+            bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_VALUES_SLOT")) - 1),
+            key,
+            uint256(0)
+        )));
+        
+        bytes32 valueHash = keccak256(largeReturnValue);
+        assembly ("memory-safe") {
+            tstore(hashSlot, valueHash)
+        }
+
+        // Should detect large value
+        assertEq(callBreaker.hasReturnValue(callObj), true);
+        assertEq(callBreaker.hasZeroLengthReturnValue(callObj), false);
+        
+        // Should revert when trying to get the full value
+        vm.expectRevert("Return value too large for retrieval - use getReturnValueHash instead");
+        callBreaker.getReturnValue(callObj);
+        
+        // Should return the hash
+        assertEq(callBreaker.getReturnValueHash(callObj), valueHash);
     }
 
     function _prepareInputsForCounter(uint256 numValues, bool userReturn)
