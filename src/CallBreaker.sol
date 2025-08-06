@@ -386,7 +386,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @param returnValue The return value to check
     /// @return True if the value is too large, false otherwise
     function _isReturnValueTooLarge(bytes memory returnValue) internal pure returns (bool) {
-        return returnValue.length > 1024; // 1KB limit
+        return returnValue.length > MAX_RETURN_VALUE_SIZE;
     }
 
     /// @notice Stores a return value in transient storage using multiple slots
