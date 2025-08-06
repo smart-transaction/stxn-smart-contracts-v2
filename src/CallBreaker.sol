@@ -309,7 +309,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         for (uint256 i = 0; i < gridLength; i++) {
             uint256 len = callGrid[i].length;
-            uint256 lenSlot = slot + (i * 32) + 32; // Each length is 32 bytes
+            uint256 lenSlot = slot + i + 1; // Each length is 32 bytes, slots are sequential
             assembly ("memory-safe") {
                 tstore(lenSlot, len)
             }
