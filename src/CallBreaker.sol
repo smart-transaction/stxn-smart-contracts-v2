@@ -298,7 +298,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _populateCallGridLengths() internal {
         uint256 slot = uint256(CALL_GRID_LENGTHS_SLOT);
         uint256 gridLength = callGrid.length;
-        
+
         assembly ("memory-safe") {
             tstore(slot, gridLength)
         }
