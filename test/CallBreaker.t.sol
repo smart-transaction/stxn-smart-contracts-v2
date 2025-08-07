@@ -3,8 +3,8 @@ pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
 import {CallObject, UserObjective, AdditionalData, CallBreaker} from "src/CallBreaker.sol";
-import {Counter} from "test/exampleContracts/Counter.sol";
-import {PreApprover} from "test/exampleContracts/PreApprover.sol";
+import {Counter} from "src/tests/Counter.sol";
+import {PreApprover} from "src/tests/PreApprover.sol";
 
 contract CallBreakerTest is Test {
     PreApprover public preApprover;
