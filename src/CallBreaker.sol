@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSL-1.
-pragma solidity 0.8.28;
+pragma solidity 0.8.30;
 
 import {ICallBreaker, CallObject, UserObjective, AdditionalData} from "src/interfaces/ICallBreaker.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -8,6 +8,10 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 
 contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
+
+    uint256 public constant MAX_RETURN_VALUE_SIZE = 1024;
+
+    uint256 public constant LARGE_VALUE_MARKER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE;
 
     bytes32 public constant EMPTY_DATA = keccak256(bytes(""));
 
@@ -18,6 +22,18 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @notice The slot at which the order of execution is stored
     bytes32 public constant CALL_ORDER_STORAGE_SLOT =
         bytes32(uint256(keccak256("CallBreaker.CALL_ORDER_STORAGE_SLOT")) - 1);
+
+    /// @notice The slot at which call grid lengths are stored for optimization
+    bytes32 public constant CALL_GRID_LENGTHS_SLOT =
+        bytes32(uint256(keccak256("CallBreaker.CALL_GRID_LENGTHS_SLOT")) - 1);
+
+    /// @notice The slot at which call return values are stored
+    bytes32 public constant CALL_RETURN_VALUES_SLOT =
+        bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_VALUES_SLOT")) - 1);
+
+    /// @notice The slot at which call return value lengths are stored
+    bytes32 public constant CALL_RETURN_LENGTHS_SLOT =
+        bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_LENGTHS_SLOT")) - 1);
 
     /// @notice flag to identify if the call indices have been set
     bool private callObjIndicesSet;
@@ -39,10 +55,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
     /// @notice mapping of callId to call index
     mapping(bytes32 => uint256[]) public callObjIndices;
-
-    /// @notice stores the return values of callObjs to be used by other dependend CallObjs
-    bytes[] public callObjReturnKeys;
-    mapping(bytes => bytes) public callObjReturn;
 
     /// @notice mapping of app id to its pre-approval CallObjects
     mapping(bytes => CallObject) private _preApprovalCallObjs;
@@ -287,6 +299,25 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         _storeOrderOfExecution(orderOfExecution);
         _populateAdditionalDataStore(mevTimeData);
+        _populateCallGridLengths();
+    }
+
+    /// @notice Populates call grid lengths in transient storage for optimization
+    function _populateCallGridLengths() internal {
+        uint256 slot = uint256(CALL_GRID_LENGTHS_SLOT);
+        uint256 gridLength = callGrid.length;
+
+        assembly ("memory-safe") {
+            tstore(slot, gridLength)
+        }
+
+        for (uint256 i = 0; i < gridLength; i++) {
+            uint256 len = callGrid[i].length;
+            uint256 lenSlot = slot + i + 1; // Each length is 32 bytes, slots are sequential
+            assembly ("memory-safe") {
+                tstore(lenSlot, len)
+            }
+        }
     }
 
     function _executeAndVerifyCalls(
@@ -330,11 +361,209 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
             // store returned values if exposed for use by other CallObjs
             if (callObj.exposeReturn) {
-                bytes memory key = abi.encode(callObj);
-                callObjReturn[key] = returnFromExecution; // TODO Save using tstore
-                callObjReturnKeys.push(key);
+                bytes32 key = keccak256(abi.encode(callObj));
+                _storeReturnValue(key, returnFromExecution);
             }
         }
+    }
+
+    /// @notice Computes a safe slot for transient storage to prevent collisions
+    /// @param baseSlot The base slot constant
+    /// @param key The key to hash
+    /// @param index Optional index for multi-slot storage
+    /// @return The computed slot
+    function _computeSafeSlot(bytes32 baseSlot, bytes32 key, uint256 index) internal pure returns (uint256) {
+        // Use a more collision-resistant approach with domain separation
+        return uint256(
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01", // Domain separator
+                    baseSlot,
+                    key,
+                    index
+                )
+            )
+        );
+    }
+
+    /// @notice Checks if a return value is too large for transient storage
+    /// @param returnValue The return value to check
+    /// @return True if the value is too large, false otherwise
+    function _isReturnValueTooLarge(bytes memory returnValue) internal pure returns (bool) {
+        return returnValue.length > MAX_RETURN_VALUE_SIZE;
+    }
+
+    /// @notice Stores a return value in transient storage using multiple slots
+    /// @param key The key to identify the return value
+    /// @param returnValue The return value to store
+    function _storeReturnValue(bytes32 key, bytes memory returnValue) internal {
+        uint256 length = returnValue.length;
+        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
+
+        // Handle zero-length values by storing a special marker
+        if (length == 0) {
+            assembly ("memory-safe") {
+                tstore(lengthSlot, LARGE_VALUE_MARKER) // marker for zero-length
+            }
+            return;
+        }
+
+        // Check if value is too large for transient storage
+        if (_isReturnValueTooLarge(returnValue)) {
+            // For large values, store only a hash reference to save gas
+            bytes32 valueHash = keccak256(returnValue);
+            assembly ("memory-safe") {
+                tstore(lengthSlot, LARGE_VALUE_MARKER) // Special marker for large values
+            }
+            // Store the hash in the first data slot
+            uint256 hashSlot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, 0);
+            assembly ("memory-safe") {
+                tstore(hashSlot, valueHash)
+            }
+            return;
+        }
+
+        uint256 numSlots = (length + 31) / 32; // Calculate number of 32-byte slots needed
+
+        // Store the length
+        assembly ("memory-safe") {
+            tstore(lengthSlot, length)
+        }
+
+        // Store the data in chunks of 32 bytes
+        for (uint256 i = 0; i < numSlots; i++) {
+            uint256 slot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, i);
+            bytes32 chunk;
+
+            if (i * 32 + 32 <= length) {
+                // Full 32-byte chunk
+                assembly ("memory-safe") {
+                    chunk := mload(add(returnValue, add(32, mul(i, 32))))
+                }
+            } else {
+                // Partial chunk - properly zero the unused bytes
+                uint256 remainingBytes = length - (i * 32);
+                assembly ("memory-safe") {
+                    // Load the partial data
+                    chunk := mload(add(returnValue, add(32, mul(i, 32))))
+                    // Create a mask for the remaining bytes and zero the rest
+                    let mask := sub(shl(mul(remainingBytes, 8), 1), 1)
+                    chunk := and(chunk, mask)
+                }
+            }
+
+            assembly ("memory-safe") {
+                tstore(slot, chunk)
+            }
+        }
+    }
+
+    /// @notice Retrieves a return value from transient storage
+    /// @param callObj The CallObject whose return value to retrieve
+    /// @return The return value stored for this call object
+    function getReturnValue(CallObject memory callObj) external view returns (bytes memory) {
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(lengthSlot)
+        }
+
+        // Check for unset value (0)
+        if (length == 0) {
+            return new bytes(0); // Unset value
+        }
+
+        // Check for special marker for zero-length return values
+        if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF) {
+            return new bytes(0); // Zero-length return value
+        }
+
+        // Check for special marker for large values
+        if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE) {
+            revert("Return value too large for retrieval - use getReturnValueHash instead");
+        }
+
+        uint256 numSlots = (length + 31) / 32;
+        bytes memory returnValue = new bytes(length);
+
+        for (uint256 i = 0; i < numSlots; i++) {
+            uint256 slot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, i);
+            bytes32 chunk;
+            assembly ("memory-safe") {
+                chunk := tload(slot)
+            }
+
+            uint256 offset = i * 32;
+            if (offset + 32 <= length) {
+                // Full 32-byte chunk
+                assembly ("memory-safe") {
+                    mstore(add(returnValue, add(32, offset)), chunk)
+                }
+            } else {
+                // Partial chunk - only copy the remaining bytes
+                uint256 remainingBytes = length - offset;
+                assembly ("memory-safe") {
+                    // Create a mask for the remaining bytes
+                    let mask := sub(shl(mul(remainingBytes, 8), 1), 1)
+                    let maskedChunk := and(chunk, mask)
+                    mstore(add(returnValue, add(32, offset)), maskedChunk)
+                }
+            }
+        }
+
+        return returnValue;
+    }
+
+    /// @notice Gets the hash of a large return value from transient storage
+    /// @param callObj The CallObject whose return value hash to retrieve
+    /// @return The hash of the return value
+    function getReturnValueHash(CallObject memory callObj) external view returns (bytes32) {
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(lengthSlot)
+        }
+
+        // Check for special marker for large values
+        if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE) {
+            uint256 hashSlot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, 0);
+            bytes32 valueHash;
+            assembly ("memory-safe") {
+                valueHash := tload(hashSlot)
+            }
+            return valueHash;
+        }
+
+        revert("Return value is not stored as hash");
+    }
+
+    /// @notice Checks if a return value exists for a given CallObject
+    /// @param callObj The CallObject to check
+    /// @return True if a return value exists, false otherwise
+    function hasReturnValue(CallObject memory callObj) external view returns (bool) {
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(lengthSlot)
+        }
+        // Return true if length is not 0 (unset) and not the special marker
+        return length != 0 && length != 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+    }
+
+    /// @notice Checks if a return value is explicitly zero-length
+    /// @param callObj The CallObject to check
+    /// @return True if the return value is explicitly zero-length, false otherwise
+    function hasZeroLengthReturnValue(CallObject memory callObj) external view returns (bool) {
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(lengthSlot)
+        }
+        return length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
     }
 
     /// @notice Sets the index of the currently executing call.
@@ -386,7 +615,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _cleanUpStorage() internal {
         _cleanUpAdditionalData();
         _cleanUpCallIndices();
-        _cleanUpCallReturns();
     }
 
     function _cleanUpAdditionalData() internal {
@@ -410,16 +638,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
                 }
             }
             callObjIndicesSet = false;
-        }
-    }
-
-    function _cleanUpCallReturns() internal {
-        uint256 keyListLength = callObjReturnKeys.length;
-        if (keyListLength > 0) {
-            for (uint256 i; i < keyListLength; i++) {
-                delete callObjReturn[callObjReturnKeys[i]];
-            }
-            delete callObjReturnKeys;
         }
     }
 
@@ -476,9 +694,19 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _resolveFlatIndex(uint256 flatIndex) internal view returns (uint256, uint256) {
         uint256 runningIndex = 0;
 
-        // TODO: avoid callGrid[i].length calculation by storing these values in tstore
-        for (uint256 u_index = 0; u_index < callGrid.length; u_index++) {
-            uint256 len = callGrid[u_index].length;
+        // Use transient storage to store call grid lengths for optimization
+        uint256 slot = uint256(CALL_GRID_LENGTHS_SLOT);
+        uint256 gridLength;
+        assembly ("memory-safe") {
+            gridLength := tload(slot)
+        }
+
+        for (uint256 u_index = 0; u_index < gridLength; u_index++) {
+            uint256 len;
+            uint256 lenSlot = slot + u_index + 1; // Each length is in a separate slot
+            assembly ("memory-safe") {
+                len := tload(lenSlot)
+            }
             if (flatIndex < runningIndex + len) {
                 uint256 c_index = flatIndex - runningIndex;
                 return (u_index, c_index);

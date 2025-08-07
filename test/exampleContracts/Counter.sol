@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSL-1.
-pragma solidity 0.8.28;
+pragma solidity 0.8.30;
 
 contract Counter {
     uint256 public counter;

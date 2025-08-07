@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity 0.8.30;
 
 /// @title IMultiCall3 Interface
 /// @notice Interface for MultiCall3 contract supporting multiple aggregation methods
