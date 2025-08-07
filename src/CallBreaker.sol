@@ -49,9 +49,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @notice Mapping to store balances for each sender
     mapping(address => uint256) public senderBalances;
 
-    /// @notice store addional data needed during execution
-    bytes32[] public additionalDataKeyList;
-    mapping(bytes32 => bytes) public additionalDataStore;
+    /// @notice store values needed during execution
+    bytes32[] public mevTimeDataKeyList;
+    mapping(bytes32 => bytes) public mevTimeDataStore;
 
     /// @notice mapping of callId to call index
     mapping(bytes32 => uint256[]) public callObjIndices;
@@ -115,7 +115,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         uint256 indexed chainId,
         uint256 blockNumber,
         UserObjective userObjective,
-        AdditionalData[] additionalData
+        AdditionalData[] mevTimeData
     );
 
     /// @notice Emitted when a pre-approved CallObject is set
@@ -190,9 +190,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
     /// @notice Emits the submitted user objective to be executed by a stxn hub
     /// @param _userObjective The user objective to be executed
-    /// @param _additionalData Additional data to be used in the execution
+    /// @param _mevTimeData Additional data to be used in the execution
     /// @return requestId Unique identifier for the pushed objective
-    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
+    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _mevTimeData)
         external
         payable
         returns (bytes32 requestId)
@@ -219,7 +219,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             _userObjective.chainId,
             block.number,
             _userObjective,
-            _additionalData
+            _mevTimeData
         );
 
         sequenceCounter++;
@@ -298,7 +298,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         }
 
         _storeOrderOfExecution(orderOfExecution);
-        _populateAdditionalDataStore(mevTimeData);
+        _populateMevTimeDataStore(mevTimeData);
         _populateCallGridLengths();
     }
 
@@ -613,18 +613,18 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     }
 
     function _cleanUpStorage() internal {
-        _cleanUpAdditionalData();
+        _cleanUpMevTimeData();
         _cleanUpCallIndices();
     }
 
-    function _cleanUpAdditionalData() internal {
-        uint256 keyListLength = additionalDataKeyList.length;
+    function _cleanUpMevTimeData() internal {
+        uint256 keyListLength = mevTimeDataKeyList.length;
         if (keyListLength > 0) {
             for (uint256 i; i < keyListLength; i++) {
-                bytes32 key = additionalDataKeyList[i];
-                delete additionalDataStore[key];
+                bytes32 key = mevTimeDataKeyList[i];
+                delete mevTimeDataStore[key];
             }
-            delete additionalDataKeyList;
+            delete mevTimeDataKeyList;
         }
     }
 
@@ -641,13 +641,13 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         }
     }
 
-    /// @notice Populates the additionalDataStore with a list of key-value pairs
+    /// @notice Populates the mevTimeDataStore with a list of key-value pairs
     /// @param mevTimeData The abi-encoded list of (bytes32, bytes32) key-value pairs
-    function _populateAdditionalDataStore(AdditionalData[] memory mevTimeData) internal {
+    function _populateMevTimeDataStore(AdditionalData[] memory mevTimeData) internal {
         uint256 len = mevTimeData.length;
         for (uint256 i; i < len; i++) {
-            additionalDataKeyList.push(mevTimeData[i].key); // TODO: clear after execution
-            additionalDataStore[mevTimeData[i].key] = mevTimeData[i].value;
+            mevTimeDataKeyList.push(mevTimeData[i].key);
+            mevTimeDataStore[mevTimeData[i].key] = mevTimeData[i].value;
         }
     }
 

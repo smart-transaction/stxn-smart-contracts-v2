@@ -61,4 +61,8 @@ interface ICallBreaker {
         external
         payable
         returns (bytes32 requestId);
+
+    function expectFutureCall(CallObject calldata _callObject) external returns (bool isExecutedInFuture);
+
+    function mevTimeDataStore(bytes32 _key) external view returns (bytes memory);
 }
