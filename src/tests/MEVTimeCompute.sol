@@ -61,7 +61,7 @@ contract MEVTimeCompute {
 
         callbreaker.expectFutureCall(callObj);
 
-        return initValue / divisor;
+        return initValue % divisor;
     }
 
     function verifySolution() external view {

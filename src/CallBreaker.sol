@@ -190,9 +190,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
     /// @notice Emits the submitted user objective to be executed by a stxn hub
     /// @param _userObjective The user objective to be executed
-    /// @param _mevTimeData Additional data to be used in the execution
+    /// @param _additionalData Additional data to be used in the execution
     /// @return requestId Unique identifier for the pushed objective
-    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _mevTimeData)
+    function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)
         external
         payable
         returns (bytes32 requestId)
@@ -219,7 +219,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             _userObjective.chainId,
             block.number,
             _userObjective,
-            _mevTimeData
+            _additionalData
         );
 
         sequenceCounter++;
