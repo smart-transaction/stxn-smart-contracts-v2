@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {CallObject, UserObjective, AdditionalData, CallBreaker} from "src/CallBreaker.sol";
 import {Counter} from "src/tests/Counter.sol";
 import {PreApprover} from "src/tests/PreApprover.sol";
+import {UserObjectiveHelper} from "./utils/UserObjectiveHelper.sol";
 
 contract CallBreakerTest is Test {
     PreApprover public preApprover;
@@ -389,7 +390,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
@@ -405,7 +406,8 @@ contract CallBreakerTest is Test {
         bytes memory expectedReturnValue = abi.encode("");
         callObjs[0] = _buildCallObject(address(0), "claim()", expectedReturnValue);
 
-        UserObjective memory userObjective = _buildCrossChainUserObjective(101, 0, users[0], callObjs); // Solana chain ID: 101
+        UserObjective memory userObjective =
+            UserObjectiveHelper.buildCrossChainUserObjective(101, 0, users[0], callObjs); // Solana chain ID: 101
 
         AdditionalData[] memory additionalData = new AdditionalData[](3);
         additionalData[0] = AdditionalData({key: keccak256(abi.encode("amount")), value: abi.encode(10e18)});
@@ -443,7 +445,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateInvalidSignaturesUsingLength(numValues); // Generates bad signatures
@@ -471,7 +473,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateInvalidSignaturesUsingSigner(userObjs, numValues); // Generates bad signatures
@@ -499,7 +501,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
@@ -527,7 +529,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
         }
         returnValues[numValues] = "";
 
@@ -560,7 +562,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues); // Generates bad signatures
@@ -588,7 +590,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = _buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
@@ -616,7 +618,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = _buildUserObjectiveWithInsufficientUserBalance(0, users[i], callObjs);
+            userObjs[i] = UserObjectiveHelper.buildUserObjectiveWithInsufficientBalance(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
@@ -669,57 +671,6 @@ contract CallBreakerTest is Test {
         }
 
         return signatures;
-    }
-
-    function _buildUserObjective(uint256 nonce, address sender, CallObject[] memory callObjs)
-        internal
-        pure
-        returns (UserObjective memory)
-    {
-        return UserObjective({
-            appId: hex"01",
-            nonce: nonce,
-            tip: 0,
-            chainId: 1,
-            maxFeePerGas: 1 gwei,
-            maxPriorityFeePerGas: 1 gwei,
-            sender: sender,
-            callObjects: callObjs
-        });
-    }
-
-    function _buildCrossChainUserObjective(uint256 chainId, uint256 nonce, address sender, CallObject[] memory callObjs)
-        internal
-        pure
-        returns (UserObjective memory)
-    {
-        return UserObjective({
-            appId: hex"01",
-            nonce: nonce,
-            tip: 0,
-            chainId: chainId,
-            maxFeePerGas: 1 gwei,
-            maxPriorityFeePerGas: 1 gwei,
-            sender: sender,
-            callObjects: callObjs
-        });
-    }
-
-    function _buildUserObjectiveWithInsufficientUserBalance(uint256 nonce, address sender, CallObject[] memory callObjs)
-        internal
-        pure
-        returns (UserObjective memory)
-    {
-        return UserObjective({
-            appId: hex"01",
-            nonce: nonce,
-            tip: 0,
-            chainId: 1,
-            maxFeePerGas: 500_000 gwei,
-            maxPriorityFeePerGas: 500_000 gwei,
-            sender: sender,
-            callObjects: callObjs
-        });
     }
 
     function _buildCallObject(address contractAddr, string memory funcSignature, bytes memory returnValue)
