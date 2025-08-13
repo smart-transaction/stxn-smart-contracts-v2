@@ -27,6 +27,8 @@ contract MEVTimeComputeTest is Test {
         vm.deal(solver, 10 ether); // Give solver some ETH for execution
         vm.prank(user);
         callBreaker.deposit{value: 5 ether}();
+        vm.prank(solver);
+        callBreaker.deposit{value: 1 ether}();
     }
 
     function test_MEVTimeCompute() public {
