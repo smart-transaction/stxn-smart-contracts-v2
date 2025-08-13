@@ -36,7 +36,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         bytes32(uint256(keccak256("CallBreaker.CALL_RETURN_LENGTHS_SLOT")) - 1);
 
     /// @notice flag to identify if the call indices have been set
-    bool private callObjIndicesSet;
+    // bool private callObjIndicesSet;
 
     /// @notice The sequence counter for published user objectives
     uint256 public sequenceCounter;
@@ -49,9 +49,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @notice Mapping to store balances for each sender
     mapping(address => uint256) public senderBalances;
 
-    /// @notice store addional data needed during execution
-    bytes32[] public additionalDataKeyList;
-    mapping(bytes32 => bytes) public additionalDataStore;
+    /// @notice store values needed during execution
+    bytes32[] public mevTimeDataKeyList;
+    mapping(bytes32 => bytes) public mevTimeDataStore;
 
     /// @notice mapping of callId to call index
     mapping(bytes32 => uint256[]) public callObjIndices;
@@ -115,7 +115,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         uint256 indexed chainId,
         uint256 blockNumber,
         UserObjective userObjective,
-        AdditionalData[] additionalData
+        AdditionalData[] mevTimeData
     );
 
     /// @notice Emitted when a pre-approved CallObject is set
@@ -165,7 +165,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         emit VerifyStxn();
     }
 
-    function expectFutureCall(CallObject memory callObj) external returns (bool isExecutedInFuture) {
+    function expectFutureCall(CallObject memory callObj) external view returns (bool isExecutedInFuture) {
         uint256[] memory callIndices = getCallIndex(callObj);
         uint256 currentlyExecuting = getCurrentlyExecuting();
 
@@ -177,7 +177,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         }
     }
 
-    function expectFutureCallAt(CallObject memory callObj, uint256 index) external returns (bool isExecutedAtIndex) {
+    function expectFutureCallAt(CallObject memory callObj, uint256 index)
+        external
+        view
+        returns (bool isExecutedAtIndex)
+    {
         uint256[] memory callIndices = getCallIndex(callObj);
 
         for (uint256 i; i < callIndices.length; i++) {
@@ -244,11 +248,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @dev This function validates that the correct CallObj lives in the sequence of calls and returns the index
     /// @param callObj The CallObject whose indices are to be fetched
     /// @return callIndices The indices of the CallObject
-    function getCallIndex(CallObject memory callObj) public returns (uint256[] memory callIndices) {
-        if (!callObjIndicesSet) {
-            _populateCallIndices();
-        }
-
+    function getCallIndex(CallObject memory callObj) public view returns (uint256[] memory callIndices) {
         bytes32 encodedCallObj = keccak256(abi.encode(callObj));
         callIndices = callObjIndices[encodedCallObj];
 
@@ -298,8 +298,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         }
 
         _storeOrderOfExecution(orderOfExecution);
-        _populateAdditionalDataStore(mevTimeData);
+        _populateMevTimeDataStore(mevTimeData);
         _populateCallGridLengths();
+        _populateCallIndices();
     }
 
     /// @notice Populates call grid lengths in transient storage for optimization
@@ -592,6 +593,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             encodedValue := tload(slot)
         }
 
+        // If the storage slot is empty (all zeros), return an empty array
+        if (encodedValue.length == 0) {
+            return new uint256[](0);
+        }
+
         return abi.decode(encodedValue, (uint256[]));
     }
 
@@ -613,41 +619,41 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     }
 
     function _cleanUpStorage() internal {
-        _cleanUpAdditionalData();
+        _cleanUpMevTimeData();
         _cleanUpCallIndices();
     }
 
-    function _cleanUpAdditionalData() internal {
-        uint256 keyListLength = additionalDataKeyList.length;
+    function _cleanUpMevTimeData() internal {
+        uint256 keyListLength = mevTimeDataKeyList.length;
         if (keyListLength > 0) {
             for (uint256 i; i < keyListLength; i++) {
-                bytes32 key = additionalDataKeyList[i];
-                delete additionalDataStore[key];
+                bytes32 key = mevTimeDataKeyList[i];
+                delete mevTimeDataStore[key];
             }
-            delete additionalDataKeyList;
+            delete mevTimeDataKeyList;
         }
     }
 
     function _cleanUpCallIndices() internal {
-        if (callObjIndicesSet) {
-            for (uint256 u_index; u_index < callGrid.length; u_index++) {
-                for (uint256 c_index; c_index < callGrid[u_index].length; c_index++) {
-                    delete callObjIndices[
-                        keccak256(abi.encode(callGrid[u_index][c_index]))
-                    ];
-                }
+        // if (callObjIndicesSet) {
+        for (uint256 u_index; u_index < callGrid.length; u_index++) {
+            for (uint256 c_index; c_index < callGrid[u_index].length; c_index++) {
+                delete callObjIndices[
+                    keccak256(abi.encode(callGrid[u_index][c_index]))
+                ];
             }
-            callObjIndicesSet = false;
         }
+        //     callObjIndicesSet = false;
+        // }
     }
 
-    /// @notice Populates the additionalDataStore with a list of key-value pairs
+    /// @notice Populates the mevTimeDataStore with a list of key-value pairs
     /// @param mevTimeData The abi-encoded list of (bytes32, bytes32) key-value pairs
-    function _populateAdditionalDataStore(AdditionalData[] memory mevTimeData) internal {
+    function _populateMevTimeDataStore(AdditionalData[] memory mevTimeData) internal {
         uint256 len = mevTimeData.length;
         for (uint256 i; i < len; i++) {
-            additionalDataKeyList.push(mevTimeData[i].key); // TODO: clear after execution
-            additionalDataStore[mevTimeData[i].key] = mevTimeData[i].value;
+            mevTimeDataKeyList.push(mevTimeData[i].key);
+            mevTimeDataStore[mevTimeData[i].key] = mevTimeData[i].value;
         }
     }
 
@@ -659,7 +665,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))].push(index);
         }
 
-        callObjIndicesSet = true;
+        // callObjIndicesSet = true;
         emit CallIndicesPopulated();
     }
 
