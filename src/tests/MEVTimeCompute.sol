@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0
+// SPDX-License-Identifier: BSL-1.
 pragma solidity 0.8.30;
 
 import {ICallBreaker, CallObject} from "src/CallBreaker.sol";
