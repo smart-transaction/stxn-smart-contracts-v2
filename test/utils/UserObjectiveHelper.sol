@@ -192,4 +192,27 @@ library UserObjectiveHelper {
             callObjects: callObjs
         });
     }
+
+    /// @notice Builds a CallObject with default test parameters
+    /// @param contractAddr The contract address to call
+    /// @param callvalue The encoded function call data
+    /// @param returnValue The expected return value
+    /// @return The constructed CallObject
+    function buildCallObject(address contractAddr, bytes memory callvalue, bytes memory returnValue)
+        internal
+        pure
+        returns (CallObject memory)
+    {
+        return CallObject({
+            salt: 1,
+            amount: 0,
+            gas: 1000000,
+            addr: contractAddr,
+            callvalue: callvalue,
+            returnvalue: returnValue,
+            skippable: false,
+            verifiable: true,
+            exposeReturn: false
+        });
+    }
 }

@@ -6,10 +6,12 @@ import {CallObject, UserObjective, AdditionalData, ICallBreaker} from "src/inter
 import {CallBreaker} from "src/CallBreaker.sol";
 import {MEVTimeCompute} from "src/tests/MEVTimeCompute.sol";
 import {UserObjectiveHelper} from "../utils/UserObjectiveHelper.sol";
+import {SignatureHelper} from "../utils/SignatureHelper.sol";
 
 contract MEVTimeComputeTest is Test {
     CallBreaker public callBreaker;
     MEVTimeCompute public mevTimeCompute;
+    SignatureHelper public signatureHelper;
 
     address public owner = address(0x1);
 
@@ -21,6 +23,7 @@ contract MEVTimeComputeTest is Test {
 
     function setUp() public {
         callBreaker = new CallBreaker(owner);
+        signatureHelper = new SignatureHelper(callBreaker);
         mevTimeCompute = new MEVTimeCompute(address(callBreaker), 10); // assuming the divisor is 10
         mevTimeCompute.setInitValue(93);
         vm.deal(user, 10 ether);
@@ -73,8 +76,8 @@ contract MEVTimeComputeTest is Test {
         userObjs[1] = UserObjectiveHelper.buildUserObjective(0, solver, futureCallObjects);
 
         bytes[] memory signatures = new bytes[](2);
-        signatures[0] = _generateSignature(userObjs[0], userPrivateKey);
-        signatures[1] = _generateSignature(userObjs[1], solverPrivateKey);
+        signatures[0] = signatureHelper.generateSignature(userObjs[0], userPrivateKey);
+        signatures[1] = signatureHelper.generateSignature(userObjs[1], solverPrivateKey);
 
         bytes[] memory returnValues = new bytes[](2);
         returnValues[0] = abi.encode(0);
@@ -92,15 +95,5 @@ contract MEVTimeComputeTest is Test {
 
         vm.prank(solver);
         callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, mevTimeData);
-    }
-
-    function _generateSignature(UserObjective memory userObj, uint256 signerKey)
-        internal
-        view
-        returns (bytes memory signature)
-    {
-        bytes32 messageHash = callBreaker.getMessageHash(userObj);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, messageHash);
-        signature = abi.encodePacked(r, s, v);
     }
 }
