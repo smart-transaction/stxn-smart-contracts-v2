@@ -15,13 +15,13 @@ contract FlashLiquidityProvider is Test {
     MockDaiWethPool public daiWethPool;
     CallBreaker public callBreaker;
     SignatureHelper public signatureHelper;
-    
+
     address public owner = address(0x1);
     address public provider = vm.addr(0x2);
 
     uint256 public userPrivateKey = 0x1;
     address public user = vm.addr(userPrivateKey);
-    
+
     uint256 public solverPrivateKey = 0x2;
     address public solver = vm.addr(solverPrivateKey);
 
@@ -56,7 +56,6 @@ contract FlashLiquidityProvider is Test {
 
         vm.prank(solver);
         callBreaker.deposit{value: 5 ether}(); // Add some balance to the call breaker
-
     }
 
     function testFlashLiquiditySwap() external {
@@ -74,7 +73,7 @@ contract FlashLiquidityProvider is Test {
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
 
-        // Create user objectives for executeAndVerify 
+        // Create user objectives for executeAndVerify
         UserObjective[] memory userObjs = new UserObjective[](2);
         userObjs[0] = userObjective;
 
@@ -116,18 +115,10 @@ contract FlashLiquidityProvider is Test {
         );
         // transfer the token back to provider
         callObjs[5] = UserObjectiveHelper.buildCallObject(
-            address(dai),
-            abi.encodeWithSignature(
-                "transfer(address,uint256)", provider, 100 * 1e18
-            ),
-            ""
+            address(dai), abi.encodeWithSignature("transfer(address,uint256)", provider, 100 * 1e18), ""
         );
         callObjs[6] = UserObjectiveHelper.buildCallObject(
-            address(weth),
-            abi.encodeWithSignature(
-                "transfer(address,uint256)", provider, 10 * 1e18
-            ),
-            ""
+            address(weth), abi.encodeWithSignature("transfer(address,uint256)", provider, 10 * 1e18), ""
         );
 
         userObjs[1] = UserObjectiveHelper.buildUserObjective(0, solver, callObjs);
@@ -154,8 +145,6 @@ contract FlashLiquidityProvider is Test {
         orderOfExecution[7] = 7;
         orderOfExecution[8] = 8;
 
-
-
         // return value
         bytes[] memory returnValues = new bytes[](9);
         //provider provide liquidity return value
@@ -175,9 +164,7 @@ contract FlashLiquidityProvider is Test {
 
         // solver executing the executeAndVerify()
         vm.prank(solver);
-        callBreaker.executeAndVerify(
-            userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0)
-        );
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
 
         assertEq(dai.balanceOf(address(daiWethPool)), 100010 * 1e18);
         assertLe(weth.balanceOf(address(daiWethPool)), 999998 * 1e18);
@@ -185,6 +172,4 @@ contract FlashLiquidityProvider is Test {
         assertGe(weth.balanceOf(user), 0);
         assertEq(dai.balanceOf(address(callBreaker)), 0);
     }
-
-
 }

@@ -57,7 +57,6 @@ contract SelfCheckoutTest is Test {
         vm.prank(solver);
         // Add some balance to the call breaker
         callBreaker.deposit{value: 5 ether}();
-
     }
 
     function test_selfCheckout() external {
@@ -68,15 +67,16 @@ contract SelfCheckoutTest is Test {
             abi.encodeWithSignature("approve(address,uint256)", address(selfCheckout), 10),
             abi.encode(true)
         );
-        userCallObjs[1] =
-            UserObjectiveHelper.buildCallObject(address(selfCheckout), abi.encodeWithSignature("takeSomeAtokenFromOwner(uint256)", 10), "");
+        userCallObjs[1] = UserObjectiveHelper.buildCallObject(
+            address(selfCheckout), abi.encodeWithSignature("takeSomeAtokenFromOwner(uint256)", 10), ""
+        );
 
         UserObjective memory userObjective =
             UserObjectiveHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs);
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
 
-        // Create user objectives for executeAndVerify 
+        // Create user objectives for executeAndVerify
         UserObjective[] memory userObjs = new UserObjective[](2);
         userObjs[0] = userObjective;
 
@@ -85,30 +85,31 @@ contract SelfCheckoutTest is Test {
 
         // to fulfill future call request in takeSomeAtokenFromOwner function
         callObjs[0] = CallObject({
-                salt: 0,
-                amount: 0,
-                gas: 10000000,
-                addr: address(selfCheckout),
-                callvalue: abi.encodeWithSignature("checkBalance()"),
-                returnvalue: "",
-                skippable: false,
-                verifiable: true,
-                exposeReturn: true
-            });
+            salt: 0,
+            amount: 0,
+            gas: 10000000,
+            addr: address(selfCheckout),
+            callvalue: abi.encodeWithSignature("checkBalance()"),
+            returnvalue: "",
+            skippable: false,
+            verifiable: true,
+            exposeReturn: true
+        });
         callObjs[1] = UserObjectiveHelper.buildCallObject(
             address(erc20b),
             abi.encodeWithSignature("approve(address,uint256)", address(selfCheckout), 20),
             abi.encode(true)
         );
         // then we'll call giveSomeBtokenToOwner and get the imbalance back to zero
-        callObjs[2] =
-            UserObjectiveHelper.buildCallObject(address(selfCheckout), abi.encodeWithSignature("giveSomeBtokenToOwner(uint256)", 20), "");
+        callObjs[2] = UserObjectiveHelper.buildCallObject(
+            address(selfCheckout), abi.encodeWithSignature("giveSomeBtokenToOwner(uint256)", 20), ""
+        );
         // then we'll call checkBalance
 
-        callObjs[3] = UserObjectiveHelper.buildCallObject(address(selfCheckout), abi.encodeWithSignature("checkBalance()"), "");
+        callObjs[3] =
+            UserObjectiveHelper.buildCallObject(address(selfCheckout), abi.encodeWithSignature("checkBalance()"), "");
 
         userObjs[1] = UserObjectiveHelper.buildUserObjective(0, solver, callObjs);
-
 
         // generate signature
         bytes[] memory signatures = new bytes[](2);
@@ -117,7 +118,6 @@ contract SelfCheckoutTest is Test {
 
         // setting order of execution
         uint256[] memory orderOfExecution = new uint256[](6);
-        // TODO : Comment Order of exection
         orderOfExecution[0] = 0;
         orderOfExecution[1] = 2;
         orderOfExecution[2] = 1;
@@ -125,10 +125,8 @@ contract SelfCheckoutTest is Test {
         orderOfExecution[4] = 4;
         orderOfExecution[5] = 5;
 
-
         // return value
         bytes[] memory returnValues = new bytes[](6);
-        // TODO : Comment return of exection
         returnValues[0] = abi.encode(true);
         returnValues[1] = "";
         returnValues[2] = "";
@@ -154,6 +152,4 @@ contract SelfCheckoutTest is Test {
         assertEq(erc20a.balanceOf(filler), 10);
         assertEq(erc20b.balanceOf(filler), 0);
     }
-
-
 }

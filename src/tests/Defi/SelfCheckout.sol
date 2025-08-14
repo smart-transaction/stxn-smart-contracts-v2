@@ -26,8 +26,7 @@ contract SelfCheckout {
     event DebugInfo(string message, string value);
     event DebugUint(string message, uint256 value);
 
-    constructor(address _owner, address _atoken, address _btoken, address _callbreakerAddress)
-    {
+    constructor(address _owner, address _atoken, address _btoken, address _callbreakerAddress) {
         callBreaker = CallBreaker(payable(_callbreakerAddress));
         owner = _owner;
 
@@ -60,8 +59,7 @@ contract SelfCheckout {
 
     function getSwapPartner() public view returns (address swapPartnerAddress) {
         bytes32 swapPartnerKey = keccak256(abi.encodePacked("swapPartner"));
-        bytes memory swapPartnerBytes =
-            CallBreaker(payable(callbreakerAddress)).mevTimeDataStore(swapPartnerKey);
+        bytes memory swapPartnerBytes = CallBreaker(payable(callbreakerAddress)).mevTimeDataStore(swapPartnerKey);
         assembly {
             swapPartnerAddress := mload(add(swapPartnerBytes, 32))
         }
