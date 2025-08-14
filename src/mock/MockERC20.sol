@@ -14,4 +14,13 @@ contract MockERC20 is ERC20 {
     function mint(address to, uint256 amount) public {
         _mint(to, amount);
     }
+
+    /**
+     * @dev Burns tokens from the specified address without any access control
+     * @param from The address that will have tokens burned
+     * @param amount The amount of tokens to burn
+     */
+    function burn(address from, uint256 amount) public {
+        _burn(from, amount);
+    }
 }
