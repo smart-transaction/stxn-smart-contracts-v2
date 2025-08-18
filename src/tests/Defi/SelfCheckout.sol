@@ -5,26 +5,22 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "src/CallBreaker.sol";
 
 contract SelfCheckout {
-    address owner;
-    address callbreakerAddress;
+    address public owner;
+    address public callbreakerAddress;
 
-    IERC20 atoken;
-    IERC20 btoken;
+    IERC20 public atoken;
+    IERC20 public btoken;
 
     // hardcoded exchange rate (btokens per atoken)
-    uint256 exchangeRate = 2;
+    uint256 public exchangeRate = 2;
 
     // your debt to the protocol denominated in btoken
-    uint256 imbalance = 0;
+    uint256 public imbalance;
 
     // tracks if we've called checkBalance yet. if not it needs to be.
     bool balanceScheduled = false;
 
     CallBreaker public callBreaker;
-
-    event DebugAddress(string message, address value);
-    event DebugInfo(string message, string value);
-    event DebugUint(string message, uint256 value);
 
     constructor(address _owner, address _atoken, address _btoken, address _callbreakerAddress) {
         callBreaker = CallBreaker(payable(_callbreakerAddress));
