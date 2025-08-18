@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.30;
+
+import {IMintableERC20} from "src/utils/interfaces/IMintableERC20.sol";
+import {CallObject} from "src/interfaces/ICallBreaker.sol";
+import {CallBreaker} from "src/CallBreaker.sol";
+import "forge-std/console.sol";
+
+contract MockDaiWethPool {
+    uint256 public constant DECIMAL = 1e18;
+
+    uint256 private _balanceOfWeth;
+    uint256 private _balanceOfDai;
+    uint256 expectedPrice;
+
+    address public owner;
+    IMintableERC20 public weth;
+    IMintableERC20 public dai;
+    CallBreaker public callBreaker;
+
+    event LiquiditySetForPriceTest();
+
+    error InvalidPriceLimit();
+
+    constructor(address _callbreaker, address _dai, address _weth) {
+        callBreaker = CallBreaker(payable(_callbreaker));
+        dai = IMintableERC20(_dai);
+        weth = IMintableERC20(_weth);
+        owner = msg.sender;
+    }
+
+    function mintInitialLiquidity() external returns (uint256, uint256) {
+        dai.mint(address(this), 100000 * DECIMAL);
+        weth.mint(address(this), 10 * DECIMAL);
+        _balanceOfDai = 100000 * DECIMAL;
+        _balanceOfWeth = 10 * DECIMAL;
+        expectedPrice = _balanceOfDai * DECIMAL / _balanceOfWeth;
+        return (_balanceOfDai, _balanceOfWeth);
+    }
+
+    function swapDAIForWETH(uint256 _amountIn, uint256 slippagePercent) public {
+        uint256 amountIn = _amountIn * 1e18;
+        require(dai.transferFrom(msg.sender, address(this), amountIn), "transferFrom failed.");
+
+        _balanceOfDai += amountIn;
+        uint256 amountOut = (amountIn * _balanceOfWeth) / _balanceOfDai;
+        _balanceOfWeth -= amountOut;
+        require(weth.transfer(msg.sender, amountOut), "transferFrom failed.");
+
+        // check whether or not
+        CallObject[] memory callObjs = new CallObject[](1);
+        callObjs[0] = CallObject({
+            salt: 0,
+            amount: 0,
+            gas: 10000000,
+            addr: address(this),
+            callvalue: abi.encodeWithSignature("checkSlippage(uint256)", slippagePercent),
+            returnvalue: "",
+            skippable: false,
+            verifiable: true,
+            exposeReturn: true
+        });
+
+        callBreaker.expectFutureCall(callObjs[0]);
+    }
+
+    function provideLiquidityToDAIETHPool(address provider, uint256 _amount0In, uint256 _amount1In) external {
+        uint256 amount0Desired = _amount0In * 1e18;
+        uint256 amount1Desired = _amount1In * 1e18;
+        require(dai.transferFrom(provider, address(this), amount0Desired), "transferFrom _amount0In failed.");
+        require(weth.transferFrom(provider, address(this), amount1Desired), "transferFrom _amount1In failed.");
+
+        _balanceOfDai += amount0Desired;
+        _balanceOfWeth += amount1Desired;
+        expectedPrice = _balanceOfDai * DECIMAL / _balanceOfWeth;
+    }
+
+    function withdrawLiquidityFromDAIETHPool(address provider, uint256 _amount0Out, uint256 _amount1Out) external {
+        uint256 amount0Desired = _amount0Out * 1e18;
+        uint256 amount1Desired = _amount1Out * 1e18;
+        require(dai.transfer(provider, amount0Desired), "transferFrom _amount0Out failed.");
+        require(weth.transfer(provider, amount1Desired), "transferFrom _amount1Out failed.");
+
+        _balanceOfDai -= amount0Desired;
+        _balanceOfWeth -= amount1Desired;
+        // here the expected price should also change
+    }
+
+    /// @notice functions to allow setting prices for price based test scenarios
+    function setExactLiquidity(uint256 amount0, uint256 amount1) external {
+        uint256 amount0Desired = amount0 * 1e18;
+        uint256 amount1Desired = amount1 * 1e18;
+
+        if (amount0Desired > _balanceOfDai) {
+            // mint Dai if new liquidity amount is higher
+            uint256 mintAmountDai = amount0Desired - _balanceOfDai;
+            dai.mint(address(this), mintAmountDai);
+        } else if (amount0Desired < _balanceOfDai) {
+            // burn Dai if new liquidity amount is lower
+            uint256 burnAmountDai = _balanceOfDai - amount0Desired;
+            dai.burn(address(this), burnAmountDai);
+        }
+
+        if (amount1Desired > _balanceOfWeth) {
+            // mint Weth if new liquidity amount is higher
+            uint256 mintAmountWeth = amount1Desired - _balanceOfWeth;
+            weth.mint(address(this), mintAmountWeth);
+        } else if (amount1Desired < _balanceOfWeth) {
+            // burn Weth if new liquidity amount is lower
+            uint256 burnAmountWeth = _balanceOfWeth - amount1Desired;
+            weth.burn(address(this), burnAmountWeth);
+        }
+
+        _balanceOfDai = dai.balanceOf(address(this));
+        _balanceOfWeth = weth.balanceOf(address(this));
+        expectedPrice = _balanceOfDai * DECIMAL / _balanceOfWeth;
+
+        emit LiquiditySetForPriceTest();
+    }
+
+    function checkSlippage(uint256 maxDeviationPercentage) external view {
+        // Calculate the current price (ratio) of DAI to WETH
+        uint256 currentPrice = (_balanceOfDai * DECIMAL) / _balanceOfWeth;
+
+        // Calculate the absolute deviation in percentage
+        uint256 slippage = (
+            currentPrice > expectedPrice ? (currentPrice - expectedPrice) : (expectedPrice - currentPrice)
+        ) / expectedPrice;
+
+        if (slippage > maxDeviationPercentage) revert InvalidPriceLimit();
+    }
+
+    function getPriceOfWeth() external view returns (uint256) {
+        return (_balanceOfDai / _balanceOfWeth);
+    }
+}
