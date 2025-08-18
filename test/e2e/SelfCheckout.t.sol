@@ -31,7 +31,7 @@ contract SelfCheckoutTest is Test {
         erc20a = new MockERC20Token("Erc20a", "A");
         erc20b = new MockERC20Token("Erc20b", "B");
 
-        // give the pusher 10 erc20a
+        // give the user 10 erc20a
         erc20a.mint(user, 10);
 
         // give the filler 20 erc20b
@@ -142,7 +142,7 @@ contract SelfCheckoutTest is Test {
         vm.prank(solver);
         callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, mevTimeData);
 
-        // transfer the erc20b to pusher
+        // transfer the erc20b to user
         vm.startPrank(address(callBreaker));
         erc20b.transfer(user, 20);
         vm.stopPrank();
