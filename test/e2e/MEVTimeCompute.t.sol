@@ -80,7 +80,7 @@ contract MEVTimeComputeTest is Test {
         CallObject[] memory futureCallObjects = new CallObject[](1);
         futureCallObjects[0] = futureCall;
         userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, futureCallObjects);
-        
+
         bytes[] memory signatures = new bytes[](2);
         signatures[0] = signatureHelper.generateSignature(userObjs[0], userPrivateKey);
         signatures[1] = signatureHelper.generateSignature(userObjs[1], solverPrivateKey);
@@ -106,5 +106,4 @@ contract MEVTimeComputeTest is Test {
             userObjs, signatures, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
         );
     }
-    
 }

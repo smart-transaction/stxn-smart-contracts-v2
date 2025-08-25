@@ -332,12 +332,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @param mevTimeData The AdditionalData array to be hashed
     /// @return The hash of the AdditionalData array
     function getValidatorMessageHash(AdditionalData[] memory mevTimeData) public pure returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(
-                "\x19Ethereum Signed Message:\n32",
-                keccak256(abi.encode(mevTimeData))
-            )
-        );
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", keccak256(abi.encode(mevTimeData))));
     }
 
     /// @notice Retrieves a return value from transient storage
