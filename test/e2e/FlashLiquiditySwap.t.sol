@@ -68,8 +68,9 @@ contract FlashLiquidityProvider is Test {
             address(daiWethPool), abi.encodeWithSignature("swapDAIForWETH(uint256,uint256)", 10, 2), ""
         );
 
-        UserObjective memory userObjective =
-            CallBreakerTestHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs);
+        UserObjective memory userObjective = CallBreakerTestHelper.buildUserObjectiveWithAllParams(
+            hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs
+        );
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
 

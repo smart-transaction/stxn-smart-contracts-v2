@@ -71,8 +71,9 @@ contract SelfCheckoutTest is Test {
             address(selfCheckout), abi.encodeWithSignature("takeSomeAtokenFromOwner(uint256)", 10), ""
         );
 
-        UserObjective memory userObjective =
-            CallBreakerTestHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs);
+        UserObjective memory userObjective = CallBreakerTestHelper.buildUserObjectiveWithAllParams(
+            hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs
+        );
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
 
@@ -140,7 +141,9 @@ contract SelfCheckoutTest is Test {
 
         // solver executing the executeAndVerify()
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, mevTimeData, "0x00");
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
 
         // transfer the erc20b to user
         vm.startPrank(address(callBreaker));

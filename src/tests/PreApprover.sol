@@ -51,18 +51,16 @@ contract PreApprover is IApprover {
     }
 
     /// @notice Implements IApprover.preapprove
-    /// @param _userObjective The user objective to pre-approve
     /// @return True if approved, false if rejected
-    function preapprove(UserObjective calldata _userObjective) external payable returns (bool) {
+    function preapprove(UserObjective calldata /*_userObjective*/ ) external payable returns (bool) {
         return shouldApprove;
     }
 
     /// @notice Implements IApprover.postapprove
-    /// @param _userObjectives The user objectives to post-approve
-    /// @param _returnData The return data from execution
     /// @return True if approved, false if rejected
-    function postapprove(UserObjective[] calldata _userObjectives, bytes[] calldata _returnData)
+    function postapprove(UserObjective[] calldata, /*_userObjectives*/ bytes[] calldata /*_returnData*/ )
         external
+        view
         returns (bool)
     {
         return shouldApprove;

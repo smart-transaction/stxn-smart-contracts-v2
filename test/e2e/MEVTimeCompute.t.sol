@@ -94,6 +94,8 @@ contract MEVTimeComputeTest is Test {
         mevTimeData[0] = AdditionalData({key: keccak256(abi.encodePacked("solvedValue")), value: abi.encode(solution)});
 
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, mevTimeData, "0x00"); // TODO: add validator signature and test verify
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        ); // TODO: add validator signature and test verify
     }
 }

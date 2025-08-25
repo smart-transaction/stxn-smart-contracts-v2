@@ -141,7 +141,9 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
     }
 
     function testExecuteWithInvalidSignatureLength() public {
@@ -155,7 +157,9 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert("Invalid signature length"); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
     }
 
     function testExecuteWithInvalidSignatureSigner() public {
@@ -175,7 +179,9 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
     }
 
     function testExecuteWithInvalidReturnValuesLength() public {
@@ -191,7 +197,9 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
     }
 
     function testExecuteWithInvalidContractCall() public {
@@ -206,7 +214,9 @@ contract CallBreakerTest is Test {
         bytes memory expectedError = abi.encodeWithSelector(CallBreaker.CallFailed.selector);
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
     }
 
     function testExecuteWithInvalidOrderOfExecution() public {

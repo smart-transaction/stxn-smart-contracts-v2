@@ -216,11 +216,7 @@ library CallBreakerTestHelper {
         });
     }
 
-    function emptyMevTimeData()
-        internal
-        pure
-        returns (MevTimeData memory)
-    {
+    function emptyMevTimeData() internal pure returns (MevTimeData memory) {
         return MevTimeData({validatorSignature: "", mevTimeDataValues: new AdditionalData[](0)});
     }
 }
