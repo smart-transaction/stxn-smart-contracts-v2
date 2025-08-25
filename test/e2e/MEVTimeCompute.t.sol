@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {CallObject, UserObjective, AdditionalData, ICallBreaker} from "src/interfaces/ICallBreaker.sol";
 import {CallBreaker} from "src/CallBreaker.sol";
 import {MEVTimeCompute} from "src/tests/MEVTimeCompute.sol";
-import {UserObjectiveHelper} from "../utils/UserObjectiveHelper.sol";
+import {CallBreakerTestHelper} from "../utils/CallBreakerTestHelper.sol";
 import {SignatureHelper} from "../utils/SignatureHelper.sol";
 
 contract MEVTimeComputeTest is Test {
@@ -50,7 +50,7 @@ contract MEVTimeComputeTest is Test {
         });
 
         UserObjective memory userObjective =
-            UserObjectiveHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, callObjects);
+            CallBreakerTestHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, callObjects);
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
 
@@ -73,7 +73,7 @@ contract MEVTimeComputeTest is Test {
 
         CallObject[] memory futureCallObjects = new CallObject[](1);
         futureCallObjects[0] = futureCall;
-        userObjs[1] = UserObjectiveHelper.buildUserObjective(0, solver, futureCallObjects);
+        userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, futureCallObjects);
 
         bytes[] memory signatures = new bytes[](2);
         signatures[0] = signatureHelper.generateSignature(userObjs[0], userPrivateKey);
@@ -94,6 +94,6 @@ contract MEVTimeComputeTest is Test {
         mevTimeData[0] = AdditionalData({key: keccak256(abi.encodePacked("solvedValue")), value: abi.encode(solution)});
 
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, mevTimeData);
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, mevTimeData, "0x00"); // TODO: add validator signature and test verify
     }
 }

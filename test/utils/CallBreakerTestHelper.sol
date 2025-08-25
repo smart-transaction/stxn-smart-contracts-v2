@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: BSL-1.
 pragma solidity 0.8.30;
 
-import {CallObject, UserObjective} from "src/interfaces/ICallBreaker.sol";
+import {CallObject, UserObjective, MevTimeData, AdditionalData} from "src/interfaces/ICallBreaker.sol";
 
-/// @title UserObjectiveHelper
+/// @title CallBreakerTestHelper
 /// @notice Helper library for creating UserObjective structs in tests
-library UserObjectiveHelper {
+library CallBreakerTestHelper {
     /// @notice Default app ID used in tests
     bytes public constant DEFAULT_APP_ID = hex"01";
 
@@ -214,5 +214,13 @@ library UserObjectiveHelper {
             verifiable: true,
             exposeReturn: false
         });
+    }
+
+    function emptyMevTimeData()
+        internal
+        pure
+        returns (MevTimeData memory)
+    {
+        return MevTimeData({validatorSignature: "", mevTimeDataValues: new AdditionalData[](0)});
     }
 }

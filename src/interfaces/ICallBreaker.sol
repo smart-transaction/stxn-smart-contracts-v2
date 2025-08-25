@@ -48,13 +48,18 @@ struct AdditionalData {
     bytes value;
 }
 
+struct MevTimeData {
+    bytes validatorSignature;
+    AdditionalData[] mevTimeDataValues;
+}
+
 interface ICallBreaker {
     function executeAndVerify(
         UserObjective[] calldata _userObjectives,
         bytes[] calldata _signatures,
         bytes[] calldata _returnsBytes,
         uint256[] calldata _orderOfExecution,
-        AdditionalData[] calldata _mevTimeData
+        MevTimeData calldata _mevTimeData
     ) external payable;
 
     function pushUserObjective(UserObjective calldata _userObjective, AdditionalData[] calldata _additionalData)

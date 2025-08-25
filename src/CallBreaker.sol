@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BSL-1.
 pragma solidity 0.8.30;
 
-import {ICallBreaker, CallObject, UserObjective, AdditionalData} from "src/interfaces/ICallBreaker.sol";
+import {ICallBreaker, CallObject, UserObjective, MevTimeData, AdditionalData} from "src/interfaces/ICallBreaker.sol";
+import {IApprover} from "src/interfaces/IApprover.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -56,8 +57,14 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @notice mapping of callId to call index
     mapping(bytes32 => uint256[]) public callObjIndices;
 
-    /// @notice mapping of app id to its pre-approval CallObjects
-    mapping(bytes => CallObject) private _preApprovalCallObjs;
+    /// @notice mapping of app id to its pre-approval address
+    mapping(bytes => address) private _preApprovalAddresses;
+
+    /// @notice mapping of app id to its post-approval address
+    mapping(bytes => address) private _postApprovalAddresses;
+
+    /// @notice mapping of app id to its validator address
+    mapping(bytes => address) private _validatorAddresses;
 
     /// @dev Error thrown when there is not enough Ether left
     /// @dev Selector 0x75483b53
@@ -94,8 +101,12 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @dev Error thrown when a push hook fails
     /// @dev Selector 0x4c2f04a4
     error PreApprovalFailed(bytes appId);
-
-    // event Tip(address indexed from, address indexed to, uint256 amount);
+    /// @dev Error thrown when a post approval fails
+    /// @dev Selector 0x7e2e2e2d
+    error PostApprovalFailed(bytes appId);
+    /// @dev Error thrown when a validator signature verification fails
+    /// @dev Selector 0x8e2e2e2d
+    error UnauthorizedMevTimeData(AdditionalData[] mevTimeData, bytes validatorSignature);
 
     /// @notice Emitted when a user deposits ETH into the contract
     /// @param sender The address of the user making the deposit
@@ -118,8 +129,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         AdditionalData[] mevTimeData
     );
 
-    /// @notice Emitted when a pre-approved CallObject is set
-    event PreApprovalCallObjSet(bytes indexed appId, CallObject callObj);
+    /// @notice Emitted when a pre-approval and post-approval addresses are set
+    event ApprovalAddressesSet(bytes indexed appId, address indexed preApproval, address indexed postApproval);
 
     /// @notice Initializes the contract; sets the initial portal status to closed
     constructor(address _owner) Ownable(_owner) {}
@@ -155,13 +166,31 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         bytes[] calldata _signatures,
         bytes[] calldata _returnsBytes,
         uint256[] calldata _orderOfExecution,
-        AdditionalData[] calldata _mevTimeData
+        MevTimeData calldata _mevTimeData
     ) external payable nonReentrant {
-        uint256 callLength =
-            _setupExecutionData(_userObjectives, _signatures, _returnsBytes, _orderOfExecution, _mevTimeData);
+        bytes memory appId = _userObjectives[0].appId;
+
+        address validatorAddress = _validatorAddresses[appId];
+
+        if (validatorAddress != address(0)) {
+            _verifyValidatorSignature(_mevTimeData.mevTimeDataValues, _mevTimeData.validatorSignature, validatorAddress);
+        }
+
+        uint256 callLength = _setupExecutionData(
+            _userObjectives, _signatures, _returnsBytes, _orderOfExecution, _mevTimeData.mevTimeDataValues
+        );
         uint256[] memory gasPerUser =
             _executeAndVerifyCalls(_userObjectives.length, callLength, _orderOfExecution, _returnsBytes);
         _collectCostOfExecution(_userObjectives, gasPerUser);
+
+        // Note: post approval address if fetched corresponding to the first user objective, needs to worked out or ensure user defined appId is used first
+        address postApprovalAddress = _postApprovalAddresses[appId];
+        if (postApprovalAddress != address(0)) {
+            if (!IApprover(postApprovalAddress).postapprove(_userObjectives, _returnsBytes)) {
+                revert PostApprovalFailed(_userObjectives[0].appId);
+            }
+        }
+
         emit VerifyStxn();
     }
 
@@ -205,13 +234,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             abi.encodePacked(msg.sender, _userObjective.chainId, sequenceCounter, block.timestamp, block.prevrandao)
         );
 
-        CallObject memory preApprovalCallObj = _preApprovalCallObjs[_userObjective.appId];
-        if (preApprovalCallObj.addr != address(0) && preApprovalCallObj.callvalue.length > 0) {
-            (bool success, bytes memory returnData) = preApprovalCallObj.addr.call{
-                gas: preApprovalCallObj.gas,
-                value: msg.value
-            }(preApprovalCallObj.callvalue);
-            if (returnData.length == 0 || !abi.decode(returnData, (bool)) || !success) {
+        address preApprovalAddress = _preApprovalAddresses[_userObjective.appId];
+        if (preApprovalAddress != address(0)) {
+            if (!IApprover(preApprovalAddress).preapprove{value: msg.value}(_userObjective)) {
                 revert PreApprovalFailed(_userObjective.appId);
             }
         }
@@ -229,19 +254,27 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         sequenceCounter++;
     }
 
-    /// @notice Sets a pre-approved CallObject for a given app ID
-    /// @param appId The app ID to set the pre-approved CallObject for
-    /// @param callObj The CallObject to pre-approve
-    function setPreApprovedCallObj(bytes calldata appId, CallObject calldata callObj) external onlyOwner {
-        _preApprovalCallObjs[appId] = callObj;
-        emit PreApprovalCallObjSet(appId, callObj);
+    /// @notice Sets the pre-approval and post-approval addresses for a given app ID
+    /// @param appId The app ID to set the addresses for
+    /// @param preApproval The address to use for pre-approval
+    /// @param postApproval The address to use for post-approval
+    function setApprovalAddresses(bytes calldata appId, address preApproval, address postApproval) external onlyOwner {
+        _preApprovalAddresses[appId] = preApproval;
+        _postApprovalAddresses[appId] = postApproval;
+        emit ApprovalAddressesSet(appId, preApproval, postApproval);
     }
 
-    /// @notice Gets the pre-approved CallObject for a given app ID
-    /// @param appId The app ID to get the pre-approved CallObject for
-    /// @return The pre-approved CallObject
-    function preApprovedCallObjs(bytes calldata appId) external view returns (CallObject memory) {
-        return _preApprovalCallObjs[appId];
+    /// @notice Gets the pre-approval and post-approval addresses for a given app ID
+    /// @param appId The app ID to get the addresses for
+    /// @return preApproval The pre-approval address
+    /// @return postApproval The post-approval address
+    function getApprovalAddresses(bytes calldata appId)
+        external
+        view
+        returns (address preApproval, address postApproval)
+    {
+        preApproval = _preApprovalAddresses[appId];
+        postApproval = _postApprovalAddresses[appId];
     }
 
     /// @notice Fetches the index of a given CallObject from the callIndex store
@@ -281,7 +314,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         bytes[] memory signatures,
         bytes[] memory returnValues,
         uint256[] memory orderOfExecution,
-        AdditionalData[] memory mevTimeData
+        AdditionalData[] memory mevTimeDataValues
     ) internal returns (uint256 callLength) {
         uint256 len = userObjectives.length;
 
@@ -298,7 +331,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         }
 
         _storeOrderOfExecution(orderOfExecution);
-        _populateMevTimeDataStore(mevTimeData);
+        _populateMevTimeDataStore(mevTimeDataValues);
         _populateCallGridLengths();
         _populateCallIndices();
     }
@@ -340,6 +373,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             // Add gas consumed to the user's total
             gasPerUser[u_index] += gasConsumed;
         }
+
         // Clean up all state variables created during execution
         _cleanUpStorage();
     }
@@ -456,6 +490,29 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             assembly ("memory-safe") {
                 tstore(slot, chunk)
             }
+        }
+    }
+
+    function _verifyValidatorSignature(
+        AdditionalData[] memory mevTimeDataValues,
+        bytes memory validatorSignature,
+        address validatorAddress
+    ) internal pure {
+        bytes32 messageHash = keccak256(abi.encode(mevTimeDataValues));
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        assembly {
+            r := mload(add(validatorSignature, 32))
+            s := mload(add(validatorSignature, 64))
+            v := byte(0, mload(add(validatorSignature, 96)))
+        }
+
+        address recoveredAddress = ecrecover(messageHash, v, r, s);
+
+        if (recoveredAddress != validatorAddress) {
+            revert UnauthorizedMevTimeData(mevTimeDataValues, validatorSignature);
         }
     }
 
@@ -648,12 +705,12 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     }
 
     /// @notice Populates the mevTimeDataStore with a list of key-value pairs
-    /// @param mevTimeData The abi-encoded list of (bytes32, bytes32) key-value pairs
-    function _populateMevTimeDataStore(AdditionalData[] memory mevTimeData) internal {
-        uint256 len = mevTimeData.length;
+    /// @param mevTimeDataValues The abi-encoded list of (bytes32, bytes32) key-value pairs
+    function _populateMevTimeDataStore(AdditionalData[] memory mevTimeDataValues) internal {
+        uint256 len = mevTimeDataValues.length;
         for (uint256 i; i < len; i++) {
-            mevTimeDataKeyList.push(mevTimeData[i].key);
-            mevTimeDataStore[mevTimeData[i].key] = mevTimeData[i].value;
+            mevTimeDataKeyList.push(mevTimeDataValues[i].key);
+            mevTimeDataStore[mevTimeDataValues[i].key] = mevTimeDataValues[i].value;
         }
     }
 

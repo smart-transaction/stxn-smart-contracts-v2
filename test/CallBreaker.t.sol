@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {CallObject, UserObjective, AdditionalData, CallBreaker} from "src/CallBreaker.sol";
 import {Counter} from "src/tests/Counter.sol";
 import {PreApprover} from "src/tests/PreApprover.sol";
-import {UserObjectiveHelper} from "./utils/UserObjectiveHelper.sol";
+import {CallBreakerTestHelper} from "./utils/CallBreakerTestHelper.sol";
 
 contract CallBreakerTest is Test {
     PreApprover public preApprover;
@@ -89,7 +89,9 @@ contract CallBreakerTest is Test {
         orderOfExecution[2] = 0;
 
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
     }
 
     function testExecuteAndVerifyWithSolverReturns() public {
@@ -102,7 +104,9 @@ contract CallBreakerTest is Test {
         orderOfExecution[2] = 1;
 
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
     }
 
     function testExecuteAndVerifyWithInsufficientUserBalance() public {
@@ -119,7 +123,9 @@ contract CallBreakerTest is Test {
         vm.prank(solver);
         vm.expectRevert(expectedError);
 
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
     }
 
     function testExecuteAndVerifyWithInvalidUserReturnValues() public {
@@ -135,7 +141,7 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
     }
 
     function testExecuteWithInvalidSignatureLength() public {
@@ -149,7 +155,7 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert("Invalid signature length"); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
     }
 
     function testExecuteWithInvalidSignatureSigner() public {
@@ -169,7 +175,7 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
     }
 
     function testExecuteWithInvalidReturnValuesLength() public {
@@ -185,7 +191,7 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
     }
 
     function testExecuteWithInvalidContractCall() public {
@@ -200,7 +206,7 @@ contract CallBreakerTest is Test {
         bytes memory expectedError = abi.encodeWithSelector(CallBreaker.CallFailed.selector);
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
     }
 
     function testExecuteWithInvalidOrderOfExecution() public {
@@ -216,7 +222,9 @@ contract CallBreakerTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(expectedError); // Expect failure due to bad signature format
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
     }
 
     function testPushUserObjectiveWithoutPreApproval() public {
@@ -233,63 +241,38 @@ contract CallBreakerTest is Test {
         callBreaker.pushUserObjective(userObjective, additionalData);
     }
 
-    function testSetPreApprovedCallObj() public {
-        CallObject memory callObj = CallObject({
-            salt: 0,
-            amount: 0,
-            gas: 100000,
-            addr: address(preApprover),
-            callvalue: abi.encodeWithSignature("alwaysApprove()"),
-            returnvalue: "",
-            skippable: false,
-            verifiable: false,
-            exposeReturn: false
-        });
-        vm.prank(owner);
-        callBreaker.setPreApprovedCallObj(hex"01", callObj);
+    function testSetApprovalAddresses() public {
+        address preApproval = address(preApprover);
+        address postApproval = address(preApprover);
 
-        CallObject memory preApprovedCallObj = callBreaker.preApprovedCallObjs(hex"01");
-        assertEq(preApprovedCallObj.addr, address(preApprover));
-        assertEq(preApprovedCallObj.callvalue, abi.encodeWithSignature("alwaysApprove()"));
+        vm.prank(owner);
+        vm.expectEmit(false, true, true, true);
+        emit CallBreaker.ApprovalAddressesSet(hex"01", preApproval, postApproval);
+        callBreaker.setApprovalAddresses(hex"01", preApproval, postApproval);
+
+        (address retrievedPreApproval, address retrievedPostApproval) = callBreaker.getApprovalAddresses(hex"01");
+        assertEq(retrievedPreApproval, preApproval);
+        assertEq(retrievedPostApproval, postApproval);
     }
 
-    function testSetPreApprovedCallObjFail() public {
-        CallObject memory callObj = CallObject({
-            salt: 0,
-            amount: 0,
-            gas: 100000,
-            addr: address(preApprover),
-            callvalue: abi.encodeWithSignature("alwaysApprove()"),
-            returnvalue: "",
-            skippable: false,
-            verifiable: false,
-            exposeReturn: false
-        });
+    function testSetApprovalAddressesFail() public {
+        address preApproval = address(preApprover);
+        address postApproval = address(preApprover);
 
         vm.prank(user);
         vm.expectRevert();
-        callBreaker.setPreApprovedCallObj(hex"01", callObj);
+        callBreaker.setApprovalAddresses(hex"01", preApproval, postApproval);
     }
 
-    function testPushUserObjectiveWithPreApprovedCallObj() public {
+    function testPushUserObjectiveWithPreApproval() public {
         (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
             _prepareInputsForSignalUserObjective();
 
         userObjective.appId = hex"01";
 
-        CallObject memory callObj = CallObject({
-            salt: 0,
-            amount: 0,
-            gas: 100000,
-            addr: address(preApprover),
-            callvalue: abi.encodeWithSignature("preApprove(bytes32)", keccak256(abi.encode("0x1"))),
-            returnvalue: "",
-            skippable: false,
-            verifiable: false,
-            exposeReturn: false
-        });
+        // Set pre-approval address
         vm.prank(owner);
-        callBreaker.setPreApprovedCallObj(userObjective.appId, callObj);
+        callBreaker.setApprovalAddresses(userObjective.appId, address(preApprover), address(0));
 
         uint256 sequenceCounter = callBreaker.sequenceCounter();
 
@@ -303,25 +286,19 @@ contract CallBreakerTest is Test {
         assertEq(address(preApprover).balance, 0.1 ether);
     }
 
-    function testPushUserObjectiveWithPreApprovedCallObjFail() public {
+    function testPushUserObjectiveWithPreApprovalFail() public {
         (UserObjective memory userObjective, AdditionalData[] memory additionalData) =
             _prepareInputsForSignalUserObjective();
 
         userObjective.appId = hex"01";
 
-        CallObject memory callObj = CallObject({
-            salt: 0,
-            amount: 0,
-            gas: 100000,
-            addr: address(preApprover),
-            callvalue: abi.encodeWithSignature("alwaysReject()"),
-            returnvalue: "",
-            skippable: false,
-            verifiable: false,
-            exposeReturn: false
-        });
+        // Set pre-approval address to a contract that will reject
         vm.prank(owner);
-        callBreaker.setPreApprovedCallObj(userObjective.appId, callObj);
+        callBreaker.setApprovalAddresses(userObjective.appId, address(preApprover), address(0));
+
+        // Set the PreApprover to reject requests
+        vm.prank(owner);
+        preApprover.setShouldApprove(false);
 
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(CallBreaker.PreApprovalFailed.selector, userObjective.appId));
@@ -390,7 +367,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = CallBreakerTestHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
@@ -407,7 +384,7 @@ contract CallBreakerTest is Test {
         callObjs[0] = _buildCallObject(address(0), "claim()", expectedReturnValue);
 
         UserObjective memory userObjective =
-            UserObjectiveHelper.buildCrossChainUserObjective(101, 0, users[0], callObjs); // Solana chain ID: 101
+            CallBreakerTestHelper.buildCrossChainUserObjective(101, 0, users[0], callObjs); // Solana chain ID: 101
 
         AdditionalData[] memory additionalData = new AdditionalData[](3);
         additionalData[0] = AdditionalData({key: keccak256(abi.encode("amount")), value: abi.encode(10e18)});
@@ -445,7 +422,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = CallBreakerTestHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateInvalidSignaturesUsingLength(numValues); // Generates bad signatures
@@ -473,7 +450,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = CallBreakerTestHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateInvalidSignaturesUsingSigner(userObjs, numValues); // Generates bad signatures
@@ -501,7 +478,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = CallBreakerTestHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
@@ -529,7 +506,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = CallBreakerTestHelper.buildUserObjective(0, users[i], callObjs);
         }
         returnValues[numValues] = "";
 
@@ -562,7 +539,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = CallBreakerTestHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues); // Generates bad signatures
@@ -590,7 +567,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = UserObjectiveHelper.buildUserObjective(0, users[i], callObjs);
+            userObjs[i] = CallBreakerTestHelper.buildUserObjective(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
@@ -618,7 +595,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            userObjs[i] = UserObjectiveHelper.buildUserObjectiveWithInsufficientBalance(0, users[i], callObjs);
+            userObjs[i] = CallBreakerTestHelper.buildUserObjectiveWithInsufficientBalance(0, users[i], callObjs);
         }
 
         signatures = _generateCorrectSignatures(userObjs, numValues);
@@ -690,10 +667,4 @@ contract CallBreakerTest is Test {
             exposeReturn: false
         });
     }
-
-    // function _prepareMEVData() internal pure returns (AdditionalData[] memory) {
-    //     AdditionalData[] memory mevData = new AdditionalData[](1);
-    //     mevData[0] = AdditionalData({key: keccak256(abi.encode(0)), value: abi.encode(0)});
-    //     return mevData;
-    // }
 }

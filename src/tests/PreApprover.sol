@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: BSL-1.
 pragma solidity 0.8.30;
 
+import {IApprover, UserObjective} from "src/interfaces/IApprover.sol";
+
 /// @title PreApprover
 /// @notice A simple contract for testing pre-approval functionality
-contract PreApprover {
+contract PreApprover is IApprover {
     mapping(bytes32 => bool) public approvedRequests;
+    bool public shouldApprove = true;
 
     /// @notice Approves a request by its ID
     /// @param requestId The request ID to approve
@@ -39,5 +42,29 @@ contract PreApprover {
     /// @return Always returns false
     function alwaysReject() external pure returns (bool) {
         return false;
+    }
+
+    /// @notice Sets whether the contract should approve or reject requests
+    /// @param _shouldApprove Whether to approve requests
+    function setShouldApprove(bool _shouldApprove) external {
+        shouldApprove = _shouldApprove;
+    }
+
+    /// @notice Implements IApprover.preapprove
+    /// @param _userObjective The user objective to pre-approve
+    /// @return True if approved, false if rejected
+    function preapprove(UserObjective calldata _userObjective) external payable returns (bool) {
+        return shouldApprove;
+    }
+
+    /// @notice Implements IApprover.postapprove
+    /// @param _userObjectives The user objectives to post-approve
+    /// @param _returnData The return data from execution
+    /// @return True if approved, false if rejected
+    function postapprove(UserObjective[] calldata _userObjectives, bytes[] calldata _returnData)
+        external
+        returns (bool)
+    {
+        return shouldApprove;
     }
 }

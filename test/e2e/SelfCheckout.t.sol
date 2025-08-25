@@ -3,7 +3,7 @@ pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
 import {CallObject, UserObjective} from "src/interfaces/ICallBreaker.sol";
-import {UserObjectiveHelper} from "test/utils/UserObjectiveHelper.sol";
+import {CallBreakerTestHelper} from "test/utils/CallBreakerTestHelper.sol";
 import {CallBreaker, AdditionalData} from "src/CallBreaker.sol";
 import {SelfCheckout} from "src/tests/Defi/SelfCheckout.sol";
 import {MockERC20Token} from "src/utils/MockERC20Token.sol";
@@ -62,17 +62,17 @@ contract SelfCheckoutTest is Test {
     function test_selfCheckout() external {
         // callObjects of pusher
         CallObject[] memory userCallObjs = new CallObject[](2);
-        userCallObjs[0] = UserObjectiveHelper.buildCallObject(
+        userCallObjs[0] = CallBreakerTestHelper.buildCallObject(
             address(erc20a),
             abi.encodeWithSignature("approve(address,uint256)", address(selfCheckout), 10),
             abi.encode(true)
         );
-        userCallObjs[1] = UserObjectiveHelper.buildCallObject(
+        userCallObjs[1] = CallBreakerTestHelper.buildCallObject(
             address(selfCheckout), abi.encodeWithSignature("takeSomeAtokenFromOwner(uint256)", 10), ""
         );
 
         UserObjective memory userObjective =
-            UserObjectiveHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs);
+            CallBreakerTestHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs);
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
 
@@ -95,21 +95,21 @@ contract SelfCheckoutTest is Test {
             verifiable: true,
             exposeReturn: true
         });
-        callObjs[1] = UserObjectiveHelper.buildCallObject(
+        callObjs[1] = CallBreakerTestHelper.buildCallObject(
             address(erc20b),
             abi.encodeWithSignature("approve(address,uint256)", address(selfCheckout), 20),
             abi.encode(true)
         );
         // then we'll call giveSomeBtokenToOwner and get the imbalance back to zero
-        callObjs[2] = UserObjectiveHelper.buildCallObject(
+        callObjs[2] = CallBreakerTestHelper.buildCallObject(
             address(selfCheckout), abi.encodeWithSignature("giveSomeBtokenToOwner(uint256)", 20), ""
         );
         // then we'll call checkBalance
 
         callObjs[3] =
-            UserObjectiveHelper.buildCallObject(address(selfCheckout), abi.encodeWithSignature("checkBalance()"), "");
+            CallBreakerTestHelper.buildCallObject(address(selfCheckout), abi.encodeWithSignature("checkBalance()"), "");
 
-        userObjs[1] = UserObjectiveHelper.buildUserObjective(0, solver, callObjs);
+        userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, callObjs);
 
         // generate signature
         bytes[] memory signatures = new bytes[](2);
@@ -140,7 +140,7 @@ contract SelfCheckoutTest is Test {
 
         // solver executing the executeAndVerify()
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, mevTimeData);
+        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, mevTimeData, "0x00");
 
         // transfer the erc20b to user
         vm.startPrank(address(callBreaker));

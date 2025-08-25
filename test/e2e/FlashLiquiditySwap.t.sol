@@ -3,7 +3,7 @@ pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
 import {CallObject, UserObjective, AdditionalData} from "src/interfaces/ICallBreaker.sol";
-import {UserObjectiveHelper} from "test/utils/UserObjectiveHelper.sol";
+import {CallBreakerTestHelper} from "test/utils/CallBreakerTestHelper.sol";
 import {CallBreaker} from "src/CallBreaker.sol";
 import {MockDaiWethPool} from "src/tests/Defi/MockDaiWethPool.sol";
 import {MockERC20Token} from "src/utils/MockERC20Token.sol";
@@ -61,15 +61,15 @@ contract FlashLiquidityProvider is Test {
     function testFlashLiquiditySwap() external {
         // Prepare and push user objective
         CallObject[] memory userCallObjs = new CallObject[](2);
-        userCallObjs[0] = UserObjectiveHelper.buildCallObject(
+        userCallObjs[0] = CallBreakerTestHelper.buildCallObject(
             address(dai), abi.encodeWithSignature("approve(address,uint256)", address(daiWethPool), 10 * 1e18), ""
         );
-        userCallObjs[1] = UserObjectiveHelper.buildCallObject(
+        userCallObjs[1] = CallBreakerTestHelper.buildCallObject(
             address(daiWethPool), abi.encodeWithSignature("swapDAIForWETH(uint256,uint256)", 10, 2), ""
         );
 
         UserObjective memory userObjective =
-            UserObjectiveHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs);
+            CallBreakerTestHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs);
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
 
@@ -79,14 +79,14 @@ contract FlashLiquidityProvider is Test {
 
         // CallObjects of solver
         CallObject[] memory callObjs = new CallObject[](7);
-        callObjs[0] = UserObjectiveHelper.buildCallObject(
+        callObjs[0] = CallBreakerTestHelper.buildCallObject(
             address(dai), abi.encodeWithSignature("approve(address,uint256)", address(daiWethPool), 100 * 1e18), ""
         );
-        callObjs[1] = UserObjectiveHelper.buildCallObject(
+        callObjs[1] = CallBreakerTestHelper.buildCallObject(
             address(weth), abi.encodeWithSignature("approve(address,uint256)", address(daiWethPool), 10 * 1e18), ""
         );
         //callObject of provider to provide liquidity
-        callObjs[2] = UserObjectiveHelper.buildCallObject(
+        callObjs[2] = CallBreakerTestHelper.buildCallObject(
             address(daiWethPool),
             abi.encodeWithSignature(
                 "provideLiquidityToDAIETHPool(address,uint256,uint256)", address(callBreaker), 100, 10
@@ -106,7 +106,7 @@ contract FlashLiquidityProvider is Test {
             exposeReturn: true
         });
         // callObjects of provider to withdraw liquidity
-        callObjs[4] = UserObjectiveHelper.buildCallObject(
+        callObjs[4] = CallBreakerTestHelper.buildCallObject(
             address(daiWethPool),
             abi.encodeWithSignature(
                 "withdrawLiquidityFromDAIETHPool(address,uint256,uint256)", address(callBreaker), 100, 10
@@ -114,14 +114,14 @@ contract FlashLiquidityProvider is Test {
             ""
         );
         // transfer the token back to provider
-        callObjs[5] = UserObjectiveHelper.buildCallObject(
+        callObjs[5] = CallBreakerTestHelper.buildCallObject(
             address(dai), abi.encodeWithSignature("transfer(address,uint256)", provider, 100 * 1e18), ""
         );
-        callObjs[6] = UserObjectiveHelper.buildCallObject(
+        callObjs[6] = CallBreakerTestHelper.buildCallObject(
             address(weth), abi.encodeWithSignature("transfer(address,uint256)", provider, 10 * 1e18), ""
         );
 
-        userObjs[1] = UserObjectiveHelper.buildUserObjective(0, solver, callObjs);
+        userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, callObjs);
 
         // generate signature
         bytes[] memory signatures = new bytes[](2);
@@ -164,7 +164,9 @@ contract FlashLiquidityProvider is Test {
 
         // solver executing the executeAndVerify()
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, new AdditionalData[](0));
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+        );
 
         assertEq(dai.balanceOf(address(daiWethPool)), 100010 * 1e18);
         assertLe(weth.balanceOf(address(daiWethPool)), 999998 * 1e18);
