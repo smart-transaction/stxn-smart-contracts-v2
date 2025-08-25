@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
-import {UserObjective} from "src/interfaces/ICallBreaker.sol";
+import {UserObjective, AdditionalData} from "src/interfaces/ICallBreaker.sol";
 import {CallBreaker} from "src/CallBreaker.sol";
 
 contract SignatureHelper is Test {
@@ -18,6 +18,16 @@ contract SignatureHelper is Test {
         returns (bytes memory signature)
     {
         bytes32 messageHash = callBreaker.getMessageHash(userObj);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, messageHash);
+        signature = abi.encodePacked(r, s, v);
+    }
+
+    function generateValidatorSignature(AdditionalData[] memory mevTimeData, uint256 signerKey)
+        external
+        view
+        returns (bytes memory signature)
+    {
+        bytes32 messageHash = callBreaker.getValidatorMessageHash(mevTimeData);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, messageHash);
         signature = abi.encodePacked(r, s, v);
     }

@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
-import {CallObject, UserObjective, AdditionalData, ICallBreaker} from "src/interfaces/ICallBreaker.sol";
+import {CallObject, UserObjective, AdditionalData, ICallBreaker, MevTimeData} from "src/interfaces/ICallBreaker.sol";
 import {CallBreaker} from "src/CallBreaker.sol";
 import {MEVTimeCompute} from "src/tests/MEVTimeCompute.sol";
 import {CallBreakerTestHelper} from "../utils/CallBreakerTestHelper.sol";
@@ -21,6 +21,9 @@ contract MEVTimeComputeTest is Test {
     uint256 public userPrivateKey = 0x1;
     address public user = vm.addr(userPrivateKey);
 
+    uint256 public validatorPrivateKey = 0x3;
+    address public validator = vm.addr(validatorPrivateKey);
+
     function setUp() public {
         callBreaker = new CallBreaker(owner);
         signatureHelper = new SignatureHelper(callBreaker);
@@ -32,6 +35,9 @@ contract MEVTimeComputeTest is Test {
         callBreaker.deposit{value: 5 ether}();
         vm.prank(solver);
         callBreaker.deposit{value: 1 ether}();
+
+        vm.prank(owner);
+        callBreaker.setValidatorAddress(hex"01", validator);
     }
 
     function test_MEVTimeCompute() public {
@@ -74,7 +80,7 @@ contract MEVTimeComputeTest is Test {
         CallObject[] memory futureCallObjects = new CallObject[](1);
         futureCallObjects[0] = futureCall;
         userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, futureCallObjects);
-
+        
         bytes[] memory signatures = new bytes[](2);
         signatures[0] = signatureHelper.generateSignature(userObjs[0], userPrivateKey);
         signatures[1] = signatureHelper.generateSignature(userObjs[1], solverPrivateKey);
@@ -93,9 +99,12 @@ contract MEVTimeComputeTest is Test {
         AdditionalData[] memory mevTimeData = new AdditionalData[](1);
         mevTimeData[0] = AdditionalData({key: keccak256(abi.encodePacked("solvedValue")), value: abi.encode(solution)});
 
+        bytes memory validatorSignature = signatureHelper.generateValidatorSignature(mevTimeData, validatorPrivateKey);
+
         vm.prank(solver);
         callBreaker.executeAndVerify(
-            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
-        ); // TODO: add validator signature and test verify
+            userObjs, signatures, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
+        );
     }
+    
 }

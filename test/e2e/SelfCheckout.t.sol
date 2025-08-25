@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
-import {CallObject, UserObjective} from "src/interfaces/ICallBreaker.sol";
+import {CallObject, UserObjective, MevTimeData} from "src/interfaces/ICallBreaker.sol";
 import {CallBreakerTestHelper} from "test/utils/CallBreakerTestHelper.sol";
 import {CallBreaker, AdditionalData} from "src/CallBreaker.sol";
 import {SelfCheckout} from "src/tests/Defi/SelfCheckout.sol";
@@ -24,6 +24,8 @@ contract SelfCheckoutTest is Test {
 
     uint256 public solverPrivateKey = 0x2;
     address public solver = vm.addr(solverPrivateKey);
+    uint256 public validatorPrivateKey = 0x3;
+    address public validator = vm.addr(validatorPrivateKey);
 
     function setUp() external {
         callBreaker = new CallBreaker(owner);
@@ -139,10 +141,12 @@ contract SelfCheckoutTest is Test {
         AdditionalData[] memory mevTimeData = new AdditionalData[](1);
         mevTimeData[0] = AdditionalData({key: keccak256(abi.encodePacked("swapPartner")), value: abi.encode(filler)});
 
+        bytes memory validatorSignature = signatureHelper.generateValidatorSignature(mevTimeData, validatorPrivateKey);
+
         // solver executing the executeAndVerify()
         vm.prank(solver);
         callBreaker.executeAndVerify(
-            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
+            userObjs, signatures, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
         );
 
         // transfer the erc20b to user
