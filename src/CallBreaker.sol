@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BSL-1.
 pragma solidity 0.8.30;
 
-import {ICallBreaker, CallObject, UserObjective, AdditionalData} from "src/interfaces/ICallBreaker.sol";
+import {ICallBreaker, CallObject, UserObjective, MevTimeData, AdditionalData} from "src/interfaces/ICallBreaker.sol";
+import {IApprover} from "src/interfaces/IApprover.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -56,8 +57,14 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @notice mapping of callId to call index
     mapping(bytes32 => uint256[]) public callObjIndices;
 
-    /// @notice mapping of app id to its pre-approval CallObjects
-    mapping(bytes => CallObject) private _preApprovalCallObjs;
+    /// @notice mapping of app id to its pre-approval address
+    mapping(bytes => address) private _preApprovalAddresses;
+
+    /// @notice mapping of app id to its post-approval address
+    mapping(bytes => address) private _postApprovalAddresses;
+
+    /// @notice mapping of app id to its validator address
+    mapping(bytes => address) private _validatorAddresses;
 
     /// @dev Error thrown when there is not enough Ether left
     /// @dev Selector 0x75483b53
@@ -94,8 +101,12 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @dev Error thrown when a push hook fails
     /// @dev Selector 0x4c2f04a4
     error PreApprovalFailed(bytes appId);
-
-    // event Tip(address indexed from, address indexed to, uint256 amount);
+    /// @dev Error thrown when a post approval fails
+    /// @dev Selector 0x7e2e2e2d
+    error PostApprovalFailed(bytes appId);
+    /// @dev Error thrown when a validator signature verification fails
+    /// @dev Selector 0x8e2e2e2d
+    error UnauthorizedMevTimeData(AdditionalData[] mevTimeData, bytes validatorSignature);
 
     /// @notice Emitted when a user deposits ETH into the contract
     /// @param sender The address of the user making the deposit
@@ -118,8 +129,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         AdditionalData[] mevTimeData
     );
 
-    /// @notice Emitted when a pre-approved CallObject is set
-    event PreApprovalCallObjSet(bytes indexed appId, CallObject callObj);
+    /// @notice Emitted when a pre-approval and post-approval addresses are set
+    event ApprovalAddressesSet(bytes indexed appId, address indexed preApproval, address indexed postApproval);
+
+    /// @notice Emitted when a validator address is set
+    event ValidatorAddressSet(bytes indexed appId, address indexed validatorAddress);
 
     /// @notice Initializes the contract; sets the initial portal status to closed
     constructor(address _owner) Ownable(_owner) {}
@@ -155,13 +169,32 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         bytes[] calldata _signatures,
         bytes[] calldata _returnsBytes,
         uint256[] calldata _orderOfExecution,
-        AdditionalData[] calldata _mevTimeData
+        MevTimeData calldata _mevTimeData
     ) external payable nonReentrant {
-        uint256 callLength =
-            _setupExecutionData(_userObjectives, _signatures, _returnsBytes, _orderOfExecution, _mevTimeData);
+        bytes memory appId = _userObjectives[0].appId;
+
+        address validatorAddress = _validatorAddresses[appId];
+
+        if (validatorAddress != address(0)) {
+            bytes32 messageHash = getValidatorMessageHash(_mevTimeData.mevTimeDataValues);
+            _verifySignatures(messageHash, _mevTimeData.validatorSignature, validatorAddress);
+        }
+
+        uint256 callLength = _setupExecutionData(
+            _userObjectives, _signatures, _returnsBytes, _orderOfExecution, _mevTimeData.mevTimeDataValues
+        );
         uint256[] memory gasPerUser =
             _executeAndVerifyCalls(_userObjectives.length, callLength, _orderOfExecution, _returnsBytes);
         _collectCostOfExecution(_userObjectives, gasPerUser);
+
+        // Note: post approval address if fetched corresponding to the first user objective, needs to worked out or ensure user defined appId is used first
+        address postApprovalAddress = _postApprovalAddresses[appId];
+        if (postApprovalAddress != address(0)) {
+            if (!IApprover(postApprovalAddress).postapprove(_userObjectives, _returnsBytes)) {
+                revert PostApprovalFailed(_userObjectives[0].appId);
+            }
+        }
+
         emit VerifyStxn();
     }
 
@@ -205,13 +238,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             abi.encodePacked(msg.sender, _userObjective.chainId, sequenceCounter, block.timestamp, block.prevrandao)
         );
 
-        CallObject memory preApprovalCallObj = _preApprovalCallObjs[_userObjective.appId];
-        if (preApprovalCallObj.addr != address(0) && preApprovalCallObj.callvalue.length > 0) {
-            (bool success, bytes memory returnData) = preApprovalCallObj.addr.call{
-                gas: preApprovalCallObj.gas,
-                value: msg.value
-            }(preApprovalCallObj.callvalue);
-            if (returnData.length == 0 || !abi.decode(returnData, (bool)) || !success) {
+        address preApprovalAddress = _preApprovalAddresses[_userObjective.appId];
+        if (preApprovalAddress != address(0)) {
+            if (!IApprover(preApprovalAddress).preapprove{value: msg.value}(_userObjective)) {
                 revert PreApprovalFailed(_userObjective.appId);
             }
         }
@@ -229,19 +258,42 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         sequenceCounter++;
     }
 
-    /// @notice Sets a pre-approved CallObject for a given app ID
-    /// @param appId The app ID to set the pre-approved CallObject for
-    /// @param callObj The CallObject to pre-approve
-    function setPreApprovedCallObj(bytes calldata appId, CallObject calldata callObj) external onlyOwner {
-        _preApprovalCallObjs[appId] = callObj;
-        emit PreApprovalCallObjSet(appId, callObj);
+    /// @notice Sets the validator address for a given app ID
+    /// @param appId The app ID to set the validator address for
+    /// @param validatorAddress The address of the validator
+    function setValidatorAddress(bytes calldata appId, address validatorAddress) external onlyOwner {
+        _validatorAddresses[appId] = validatorAddress;
+        emit ValidatorAddressSet(appId, validatorAddress);
     }
 
-    /// @notice Gets the pre-approved CallObject for a given app ID
-    /// @param appId The app ID to get the pre-approved CallObject for
-    /// @return The pre-approved CallObject
-    function preApprovedCallObjs(bytes calldata appId) external view returns (CallObject memory) {
-        return _preApprovalCallObjs[appId];
+    /// @notice Gets the validator address for a given app ID
+    /// @param appId The app ID to get the validator address for
+    /// @return validatorAddress The address of the validator
+    function getValidatorAddress(bytes calldata appId) external view returns (address) {
+        return _validatorAddresses[appId];
+    }
+
+    /// @notice Sets the pre-approval and post-approval addresses for a given app ID
+    /// @param appId The app ID to set the addresses for
+    /// @param preApproval The address to use for pre-approval
+    /// @param postApproval The address to use for post-approval
+    function setApprovalAddresses(bytes calldata appId, address preApproval, address postApproval) external onlyOwner {
+        _preApprovalAddresses[appId] = preApproval;
+        _postApprovalAddresses[appId] = postApproval;
+        emit ApprovalAddressesSet(appId, preApproval, postApproval);
+    }
+
+    /// @notice Gets the pre-approval and post-approval addresses for a given app ID
+    /// @param appId The app ID to get the addresses for
+    /// @return preApproval The pre-approval address
+    /// @return postApproval The post-approval address
+    function getApprovalAddresses(bytes calldata appId)
+        external
+        view
+        returns (address preApproval, address postApproval)
+    {
+        preApproval = _preApprovalAddresses[appId];
+        postApproval = _postApprovalAddresses[appId];
     }
 
     /// @notice Fetches the index of a given CallObject from the callIndex store
@@ -276,17 +328,133 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         );
     }
 
+    /// @notice Gets the message hash for a given validator
+    /// @param mevTimeData The AdditionalData array to be hashed
+    /// @return The hash of the AdditionalData array
+    function getValidatorMessageHash(AdditionalData[] memory mevTimeData) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", keccak256(abi.encode(mevTimeData))));
+    }
+
+    /// @notice Retrieves a return value from transient storage
+    /// @param callObj The CallObject whose return value to retrieve
+    /// @return The return value stored for this call object
+    function getReturnValue(CallObject memory callObj) external view returns (bytes memory) {
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(lengthSlot)
+        }
+
+        // Check for unset value (0)
+        if (length == 0) {
+            return new bytes(0); // Unset value
+        }
+
+        // Check for special marker for zero-length return values
+        if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF) {
+            return new bytes(0); // Zero-length return value
+        }
+
+        // Check for special marker for large values
+        if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE) {
+            revert("Return value too large for retrieval - use getReturnValueHash instead");
+        }
+
+        uint256 numSlots = (length + 31) / 32;
+        bytes memory returnValue = new bytes(length);
+
+        for (uint256 i = 0; i < numSlots; i++) {
+            uint256 slot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, i);
+            bytes32 chunk;
+            assembly ("memory-safe") {
+                chunk := tload(slot)
+            }
+
+            uint256 offset = i * 32;
+            if (offset + 32 <= length) {
+                // Full 32-byte chunk
+                assembly ("memory-safe") {
+                    mstore(add(returnValue, add(32, offset)), chunk)
+                }
+            } else {
+                // Partial chunk - only copy the remaining bytes
+                uint256 remainingBytes = length - offset;
+                assembly ("memory-safe") {
+                    // Create a mask for the remaining bytes
+                    let mask := sub(shl(mul(remainingBytes, 8), 1), 1)
+                    let maskedChunk := and(chunk, mask)
+                    mstore(add(returnValue, add(32, offset)), maskedChunk)
+                }
+            }
+        }
+
+        return returnValue;
+    }
+
+    /// @notice Gets the hash of a large return value from transient storage
+    /// @param callObj The CallObject whose return value hash to retrieve
+    /// @return The hash of the return value
+    function getReturnValueHash(CallObject memory callObj) external view returns (bytes32) {
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(lengthSlot)
+        }
+
+        // Check for special marker for large values
+        if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE) {
+            uint256 hashSlot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, 0);
+            bytes32 valueHash;
+            assembly ("memory-safe") {
+                valueHash := tload(hashSlot)
+            }
+            return valueHash;
+        }
+
+        revert("Return value is not stored as hash");
+    }
+
+    /// @notice Checks if a return value exists for a given CallObject
+    /// @param callObj The CallObject to check
+    /// @return True if a return value exists, false otherwise
+    function hasReturnValue(CallObject memory callObj) external view returns (bool) {
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(lengthSlot)
+        }
+        // Return true if length is not 0 (unset) and not the special marker
+        return length != 0 && length != 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+    }
+
+    /// @notice Checks if a return value is explicitly zero-length
+    /// @param callObj The CallObject to check
+    /// @return True if the return value is explicitly zero-length, false otherwise
+    function hasZeroLengthReturnValue(CallObject memory callObj) external view returns (bool) {
+        bytes32 key = keccak256(abi.encode(callObj));
+        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
+        uint256 length;
+        assembly ("memory-safe") {
+            length := tload(lengthSlot)
+        }
+        return length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+    }
+
     function _setupExecutionData(
         UserObjective[] memory userObjectives,
         bytes[] memory signatures,
         bytes[] memory returnValues,
         uint256[] memory orderOfExecution,
-        AdditionalData[] memory mevTimeData
+        AdditionalData[] memory mevTimeDataValues
     ) internal returns (uint256 callLength) {
         uint256 len = userObjectives.length;
 
         for (uint256 i; i < len; i++) {
-            _verifySignatures(userObjectives[i], signatures[i]);
+            bytes32 messageHash = getMessageHash(userObjectives[i]);
+            _verifySignatures(messageHash, signatures[i], userObjectives[i].sender);
 
             callGrid.push(userObjectives[i].callObjects);
 
@@ -298,7 +466,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         }
 
         _storeOrderOfExecution(orderOfExecution);
-        _populateMevTimeDataStore(mevTimeData);
+        _populateMevTimeDataStore(mevTimeDataValues);
         _populateCallGridLengths();
         _populateCallIndices();
     }
@@ -340,6 +508,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             // Add gas consumed to the user's total
             gasPerUser[u_index] += gasConsumed;
         }
+
         // Clean up all state variables created during execution
         _cleanUpStorage();
     }
@@ -459,114 +628,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         }
     }
 
-    /// @notice Retrieves a return value from transient storage
-    /// @param callObj The CallObject whose return value to retrieve
-    /// @return The return value stored for this call object
-    function getReturnValue(CallObject memory callObj) external view returns (bytes memory) {
-        bytes32 key = keccak256(abi.encode(callObj));
-        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
-        uint256 length;
-        assembly ("memory-safe") {
-            length := tload(lengthSlot)
-        }
-
-        // Check for unset value (0)
-        if (length == 0) {
-            return new bytes(0); // Unset value
-        }
-
-        // Check for special marker for zero-length return values
-        if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF) {
-            return new bytes(0); // Zero-length return value
-        }
-
-        // Check for special marker for large values
-        if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE) {
-            revert("Return value too large for retrieval - use getReturnValueHash instead");
-        }
-
-        uint256 numSlots = (length + 31) / 32;
-        bytes memory returnValue = new bytes(length);
-
-        for (uint256 i = 0; i < numSlots; i++) {
-            uint256 slot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, i);
-            bytes32 chunk;
-            assembly ("memory-safe") {
-                chunk := tload(slot)
-            }
-
-            uint256 offset = i * 32;
-            if (offset + 32 <= length) {
-                // Full 32-byte chunk
-                assembly ("memory-safe") {
-                    mstore(add(returnValue, add(32, offset)), chunk)
-                }
-            } else {
-                // Partial chunk - only copy the remaining bytes
-                uint256 remainingBytes = length - offset;
-                assembly ("memory-safe") {
-                    // Create a mask for the remaining bytes
-                    let mask := sub(shl(mul(remainingBytes, 8), 1), 1)
-                    let maskedChunk := and(chunk, mask)
-                    mstore(add(returnValue, add(32, offset)), maskedChunk)
-                }
-            }
-        }
-
-        return returnValue;
-    }
-
-    /// @notice Gets the hash of a large return value from transient storage
-    /// @param callObj The CallObject whose return value hash to retrieve
-    /// @return The hash of the return value
-    function getReturnValueHash(CallObject memory callObj) external view returns (bytes32) {
-        bytes32 key = keccak256(abi.encode(callObj));
-        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
-        uint256 length;
-        assembly ("memory-safe") {
-            length := tload(lengthSlot)
-        }
-
-        // Check for special marker for large values
-        if (length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE) {
-            uint256 hashSlot = _computeSafeSlot(CALL_RETURN_VALUES_SLOT, key, 0);
-            bytes32 valueHash;
-            assembly ("memory-safe") {
-                valueHash := tload(hashSlot)
-            }
-            return valueHash;
-        }
-
-        revert("Return value is not stored as hash");
-    }
-
-    /// @notice Checks if a return value exists for a given CallObject
-    /// @param callObj The CallObject to check
-    /// @return True if a return value exists, false otherwise
-    function hasReturnValue(CallObject memory callObj) external view returns (bool) {
-        bytes32 key = keccak256(abi.encode(callObj));
-        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
-        uint256 length;
-        assembly ("memory-safe") {
-            length := tload(lengthSlot)
-        }
-        // Return true if length is not 0 (unset) and not the special marker
-        return length != 0 && length != 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-    }
-
-    /// @notice Checks if a return value is explicitly zero-length
-    /// @param callObj The CallObject to check
-    /// @return True if the return value is explicitly zero-length, false otherwise
-    function hasZeroLengthReturnValue(CallObject memory callObj) external view returns (bool) {
-        bytes32 key = keccak256(abi.encode(callObj));
-        uint256 lengthSlot = _computeSafeSlot(CALL_RETURN_LENGTHS_SLOT, key, 0);
-        uint256 length;
-        assembly ("memory-safe") {
-            length := tload(lengthSlot)
-        }
-        return length == 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-    }
-
     /// @notice Sets the index of the currently executing call.
     function _setCurrentlyExecutingCallIndex(uint256 callIndex) internal {
         uint256 slot = uint256(EXECUTING_CALL_INDEX_SLOT);
@@ -648,12 +709,12 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     }
 
     /// @notice Populates the mevTimeDataStore with a list of key-value pairs
-    /// @param mevTimeData The abi-encoded list of (bytes32, bytes32) key-value pairs
-    function _populateMevTimeDataStore(AdditionalData[] memory mevTimeData) internal {
-        uint256 len = mevTimeData.length;
+    /// @param mevTimeDataValues The abi-encoded list of (bytes32, bytes32) key-value pairs
+    function _populateMevTimeDataStore(AdditionalData[] memory mevTimeDataValues) internal {
+        uint256 len = mevTimeDataValues.length;
         for (uint256 i; i < len; i++) {
-            mevTimeDataKeyList.push(mevTimeData[i].key);
-            mevTimeDataStore[mevTimeData[i].key] = mevTimeData[i].value;
+            mevTimeDataKeyList.push(mevTimeDataValues[i].key);
+            mevTimeDataStore[mevTimeDataValues[i].key] = mevTimeDataValues[i].value;
         }
     }
 
@@ -669,10 +730,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         emit CallIndicesPopulated();
     }
 
-    function _verifySignatures(UserObjective memory userObj, bytes memory signature) internal pure {
+    function _verifySignatures(bytes32 messageHash, bytes memory signature, address sender) internal pure {
         require(signature.length == 65, "Invalid signature length");
-
-        bytes32 messageHash = getMessageHash(userObj);
 
         bytes32 r;
         bytes32 s;
@@ -686,8 +745,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         address recoveredAddress = ecrecover(messageHash, v, r, s);
 
-        if (recoveredAddress != userObj.sender) {
-            revert UnauthorisedSigner(recoveredAddress, userObj.sender);
+        if (recoveredAddress != sender) {
+            revert UnauthorisedSigner(recoveredAddress, sender);
         }
     }
 
