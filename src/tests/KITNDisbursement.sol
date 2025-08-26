@@ -4,9 +4,9 @@ pragma solidity 0.8.30;
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {IKITNToken} from "src/interfaces/IKITNToken.sol";
+import {IKITNToken} from "src/utils/interfaces/IKITNToken.sol";
 import {CallBreaker} from "src/CallBreaker.sol";
-import {DisbursalData} from "src/interfaces/IKitnDisburement.sol";
+import {DisbursalData} from "src/utils/interfaces/IKITNDisburement.sol";
 
 contract KITNDisbursement is AccessControl, EIP712 {
     bytes32 public constant DISBURSER_ROLE = keccak256("DISBURSER_ROLE");
@@ -37,11 +37,8 @@ contract KITNDisbursement is AccessControl, EIP712 {
     /// @param amounts The amount of KITN Token to be received
     event TokensDisbursed(address[] indexed receivers, uint256[] amounts);
 
-    constructor(address _callBreaker, address _kitnToken, address _owner)
-        EIP712("KITNDisbursement", "1")
-    {
-        if (_callBreaker == address(0) || _kitnToken == address(0) || _owner == address(0))
-        {
+    constructor(address _callBreaker, address _kitnToken, address _owner) EIP712("KITNDisbursement", "1") {
+        if (_callBreaker == address(0) || _kitnToken == address(0) || _owner == address(0)) {
             revert ZeroAddress();
         }
 

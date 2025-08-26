@@ -3,11 +3,11 @@ pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
 import {CallObject, UserObjective, AdditionalData, CallBreaker, MevTimeData} from "src/CallBreaker.sol";
-import {KITNDisbursement} from "src/kitnDisbursement.sol";
-import {KITNToken} from "src/kitnToken.sol";
+import {KITNDisbursement} from "src/tests/KITNDisbursement.sol";
+import {KITNToken} from "src/tests/KITNToken.sol";
 import {CallBreakerTestHelper} from "test/utils/CallBreakerTestHelper.sol";
 import {SignatureHelper} from "test/utils/SignatureHelper.sol";
-import {DisbursalData} from "src/interfaces/IKITNDisburement.sol";
+import {DisbursalData} from "src/utils/interfaces/IKITNDisburement.sol";
 
 contract KITNDisbursementTest is Test {
     CallBreaker public callBreaker;
@@ -38,7 +38,7 @@ contract KITNDisbursementTest is Test {
 
         vm.prank(user);
         callBreaker.deposit{value: 5 ether}(); // Add some balance to the call breaker
-        
+
         vm.startPrank(owner);
         kitnToken.grantRole(kitnToken.MINTER_ROLE(), address(kitnDisbursement));
         vm.stopPrank();
@@ -86,7 +86,9 @@ contract KITNDisbursementTest is Test {
 
         // Solver executing the executeAndVerify()
         vm.prank(solver);
-        callBreaker.executeAndVerify(userObjs, signatures, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData));
+        callBreaker.executeAndVerify(
+            userObjs, signatures, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
+        );
 
         assertEq(kitnToken.balanceOf(address(0x1111111111111111111111111111111111111111)), 1);
         assertEq(kitnToken.balanceOf(address(0x2222222222222222222222222222222222222222)), 2);
