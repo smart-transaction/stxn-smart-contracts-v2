@@ -620,7 +620,9 @@ contract CallBreakerTest is Test {
         bytes[] memory signatures = new bytes[](numUsers);
 
         for (uint256 i; i < numUsers; i++) {
-            bytes32 messageHash = callBreaker.getMessageHash(userObjs[i]);
+            bytes32 messageHash = callBreaker.getMessageHash(
+                abi.encode(userObjs[i].nonce, userObjs[i].sender, abi.encode(userObjs[i].callObjects))
+            );
             (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKeys[i], messageHash);
             signatures[i] = abi.encodePacked(r, s, v);
         }
@@ -639,11 +641,15 @@ contract CallBreakerTest is Test {
         bytes32 r;
         bytes32 s;
         for (uint256 i = 1; i < numUsers; i++) {
-            messageHash = callBreaker.getMessageHash(userObjs[i]);
+            messageHash = callBreaker.getMessageHash(
+                abi.encode(userObjs[i].nonce, userObjs[i].sender, abi.encode(userObjs[i].callObjects))
+            );
             (v, r, s) = vm.sign(userPrivateKeys[i], messageHash);
             signatures[i] = abi.encodePacked(r, s, v);
         }
-        messageHash = callBreaker.getMessageHash(userObjs[0]);
+        messageHash = callBreaker.getMessageHash(
+            abi.encode(userObjs[0].nonce, userObjs[0].sender, abi.encode(userObjs[0].callObjects))
+        );
         (v, r, s) = vm.sign(userPrivateKeys[2], messageHash);
         signatures[0] = abi.encodePacked(r, s, v);
 

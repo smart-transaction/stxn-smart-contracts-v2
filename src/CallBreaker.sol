@@ -176,7 +176,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         address validatorAddress = _validatorAddresses[appId];
 
         if (validatorAddress != address(0)) {
-            bytes32 messageHash = getValidatorMessageHash(_mevTimeData.mevTimeDataValues);
+            bytes32 messageHash = getMessageHash(abi.encode(_mevTimeData.mevTimeDataValues));
             _verifySignatures(messageHash, _mevTimeData.validatorSignature, validatorAddress);
         }
 
@@ -319,20 +319,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         }
     }
 
-    function getMessageHash(UserObjective memory userObj) public pure returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(
-                "\x19Ethereum Signed Message:\n32",
-                keccak256(abi.encode(userObj.nonce, userObj.sender, keccak256(abi.encode(userObj.callObjects))))
-            )
-        );
-    }
-
-    /// @notice Gets the message hash for a given validator
-    /// @param mevTimeData The AdditionalData array to be hashed
-    /// @return The hash of the AdditionalData array
-    function getValidatorMessageHash(AdditionalData[] memory mevTimeData) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", keccak256(abi.encode(mevTimeData))));
+    function getMessageHash(bytes memory data) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", keccak256(data)));
     }
 
     /// @notice Retrieves a return value from transient storage
@@ -453,7 +441,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         uint256 len = userObjectives.length;
 
         for (uint256 i; i < len; i++) {
-            bytes32 messageHash = getMessageHash(userObjectives[i]);
+            bytes32 messageHash = getMessageHash(
+                abi.encode(userObjectives[i].nonce, userObjectives[i].sender, abi.encode(userObjectives[i].callObjects))
+            );
             _verifySignatures(messageHash, signatures[i], userObjectives[i].sender);
 
             callGrid.push(userObjectives[i].callObjects);
