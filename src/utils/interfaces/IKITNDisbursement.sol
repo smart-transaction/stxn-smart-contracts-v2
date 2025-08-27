@@ -10,5 +10,5 @@ struct DisbursalData {
 }
 
 interface IKITNDisbursement {
-    function disburseTokens(bytes calldata validatorNodeSignature) external;
+    function disburseTokens() external;
 }

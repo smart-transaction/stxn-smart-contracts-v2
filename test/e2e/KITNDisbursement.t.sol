@@ -7,7 +7,7 @@ import {KITNDisbursement} from "src/tests/KITNDisbursement.sol";
 import {KITNToken} from "src/tests/KITNToken.sol";
 import {CallBreakerTestHelper} from "test/utils/CallBreakerTestHelper.sol";
 import {SignatureHelper} from "test/utils/SignatureHelper.sol";
-import {DisbursalData} from "src/utils/interfaces/IKITNDisburement.sol";
+import {DisbursalData} from "src/utils/interfaces/IKITNDisbursement.sol";
 
 contract KITNDisbursementTest is Test {
     CallBreaker public callBreaker;
@@ -80,7 +80,7 @@ contract KITNDisbursementTest is Test {
 
         AdditionalData[] memory mevTimeData = new AdditionalData[](1);
         mevTimeData[0] =
-            AdditionalData({key: keccak256(abi.encodePacked("KITNDisbursalData")), value: abi.encode(disbursal)});
+            AdditionalData({key: keccak256(abi.encodePacked("KITNDisbursementData")), value: abi.encode(disbursal)});
 
         bytes memory validatorSignature = signatureHelper.generateValidatorSignature(mevTimeData, validatorPrivateKey);
 

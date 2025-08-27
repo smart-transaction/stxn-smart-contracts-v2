@@ -3,10 +3,10 @@ pragma solidity 0.8.30;
 
 import {IKITNToken} from "src/utils/interfaces/IKITNToken.sol";
 import {CallBreaker} from "src/CallBreaker.sol";
-import {DisbursalData} from "src/utils/interfaces/IKITNDisburement.sol";
+import {DisbursalData, IKITNDisbursement} from "src/utils/interfaces/IKITNDisbursement.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract KITNDisbursement is Ownable {
+contract KITNDisbursement is IKITNDisbursement, Ownable {
     IKITNToken public immutable KITNToken;
     address public callBreaker;
 
@@ -24,12 +24,12 @@ contract KITNDisbursement is Ownable {
     /// @param callBreaker The address of the callBreaker
     error UnauthorisedCaller(address caller, address callBreaker);
 
-    /// @notice Emited when Kitn Tokens are transfered to receivers
+    /// @notice Emitted when Kitn Tokens are transferred to receivers
     /// @param receivers The addresses going to receive KITN Token
     /// @param amounts The amount of KITN Token to be received
-    event TokensDisbursed(address[] indexed receivers, uint256[] amounts);
+    event TokensDisbursed(address[] receivers, uint256[] amounts);
 
-    /// @notice Emited when callBreaker is updated
+    /// @notice Emitted when callBreaker is updated
     /// @param callBreaker The address of the new callBreaker
     event CallBreakerUpdated(address indexed callBreaker);
 
@@ -53,7 +53,7 @@ contract KITNDisbursement is Ownable {
     /// @dev Requires caller to be the callBreaker
     function disburseTokens() external onlyCallBreaker {
         // Retrieve data from CallBreaker's mevTimeStore
-        bytes32 key = keccak256(abi.encodePacked("KITNDisbursalData"));
+        bytes32 key = keccak256(abi.encodePacked("KITNDisbursementData"));
         bytes memory data = CallBreaker(payable(callBreaker)).mevTimeDataStore(key);
         if (data.length == 0) {
             revert InvalidDataFromCallBreaker();
