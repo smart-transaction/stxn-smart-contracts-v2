@@ -17,7 +17,8 @@ contract SignatureHelper is Test {
         view
         returns (bytes memory signature)
     {
-        bytes32 messageHash = callBreaker.getMessageHash(userObj);
+        bytes32 messageHash =
+            callBreaker.getMessageHash(abi.encode(userObj.nonce, userObj.sender, abi.encode(userObj.callObjects)));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, messageHash);
         signature = abi.encodePacked(r, s, v);
     }
@@ -27,7 +28,7 @@ contract SignatureHelper is Test {
         view
         returns (bytes memory signature)
     {
-        bytes32 messageHash = callBreaker.getValidatorMessageHash(mevTimeData);
+        bytes32 messageHash = callBreaker.getMessageHash(abi.encode(mevTimeData));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, messageHash);
         signature = abi.encodePacked(r, s, v);
     }
