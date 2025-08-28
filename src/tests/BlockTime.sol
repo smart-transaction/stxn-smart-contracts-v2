@@ -14,7 +14,7 @@ contract BlockTime is IBlockTime, AccessControl, ReentrancyGuard {
     uint256 public minNumberOfChronicles;
 
     /// @notice value used to ensure the values being provided are not outliers
-    uint256 public maxBlockWidth;
+    uint256 private maxBlockWidth;
 
     /// @notice since the precision of time is low in this implementation we assume time to be anywhere
     ///         between current mean time and current mean time + time width
@@ -27,11 +27,14 @@ contract BlockTime is IBlockTime, AccessControl, ReentrancyGuard {
     /// @notice The ERC20 timeToken that will be transferred to users on successfull time updation
     TimeToken public timeToken;
 
+    error NotEnoughChronicles();
+
     event Tick(uint256 currentEarthTimeBlockStart, uint256 currentEarthTimeBlockEnd);
     event BlockTimeUpdated(
         uint256 newEarthTime, Chronicle[] chronicles, address[] timeTokenReceivers, uint256[] amounts
     );
     event MaxBlockWidthSet(uint256 maxBlockWidth);
+    event MinNumberOfChroniclesSet(uint256 minNumberOfChronicles);
 
     constructor(address _admin) {
         timeToken = new TimeToken();
@@ -50,6 +53,9 @@ contract BlockTime is IBlockTime, AccessControl, ReentrancyGuard {
         address[] calldata receivers,
         uint256[] calldata amounts
     ) external onlyRole(SCHEDULER_ROLE) nonReentrant {
+        if (chronicles.length < minNumberOfChronicles) {
+            revert NotEnoughChronicles();
+        }
         currentEarthTimeAvg = meanCurrentEarthTime;
         timeToken.batchMint(receivers, amounts);
         emit BlockTimeUpdated(meanCurrentEarthTime, chronicles, receivers, amounts);
@@ -61,17 +67,24 @@ contract BlockTime is IBlockTime, AccessControl, ReentrancyGuard {
     function getBlockTime() external view returns (uint256, uint256) {
         return (currentEarthTimeAvg, currentEarthTimeAvg + maxBlockWidth);
     }
+
     /// @notice Sets the maximum block width
     /// @param _maxBlockWidth The new maximum block width value
-
-    function setMaxBlockWidth(uint256 _maxBlockWidth) public onlyRole(ADMIN_ROLE) {
+    function setMaxBlockWidth(uint256 _maxBlockWidth) external onlyRole(ADMIN_ROLE) {
         maxBlockWidth = _maxBlockWidth;
         emit MaxBlockWidthSet(_maxBlockWidth);
     }
 
     /// @notice Gets the maximum block width
     /// @return The current maximum block width value
-    function getMaxBlockWidth() public view returns (uint256) {
+    function getMaxBlockWidth() external view returns (uint256) {
         return maxBlockWidth;
+    }
+
+    /// @notice Sets minimum number of chronicles value
+    /// @param _minNumberOfChronicles The new minimum number of chronicles value
+    function setMinNumberOfChronicles(uint256 _minNumberOfChronicles) external onlyRole(ADMIN_ROLE) {
+        minNumberOfChronicles = _minNumberOfChronicles;
+        emit MinNumberOfChroniclesSet(_minNumberOfChronicles);
     }
 }
