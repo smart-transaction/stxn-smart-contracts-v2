@@ -32,6 +32,10 @@ contract BlockTimeScheduler is Ownable {
     /// @param callBreaker The address of the new callBreaker
     event CallBreakerUpdated(address indexed callBreaker);
 
+    /// @notice Emitted when reschedulerAddress is updated
+    /// @param reschedulerAddress The address of the new rescheduler
+    event ReschedulerAddressUpdated(address indexed reschedulerAddress);
+
     modifier onlyCallBreaker() {
         if (msg.sender != callBreaker) {
             revert UnauthorisedCaller(msg.sender, callBreaker);
@@ -131,6 +135,6 @@ contract BlockTimeScheduler is Ownable {
             revert ZeroAddress();
         }
         reschedulerAddress = _reschedulerAddress;
-        emit CallBreakerUpdated(_reschedulerAddress);
+        emit ReschedulerAddressUpdated(_reschedulerAddress);
     }
 }
