@@ -61,19 +61,19 @@ contract BlockTimeScheduler is Ownable {
             CallBreaker(payable(callBreaker)).mevTimeDataStore(keccak256(abi.encodePacked("Chronicles")));
         bytes memory meanTimeData =
             CallBreaker(payable(callBreaker)).mevTimeDataStore(keccak256(abi.encodePacked("CurrentMeanTime")));
-        bytes memory recievers =
-            CallBreaker(payable(callBreaker)).mevTimeDataStore(keccak256(abi.encodePacked("Recievers")));
+        bytes memory receivers =
+            CallBreaker(payable(callBreaker)).mevTimeDataStore(keccak256(abi.encodePacked("Receivers")));
         bytes memory amounts =
             CallBreaker(payable(callBreaker)).mevTimeDataStore(keccak256(abi.encodePacked("Amounts")));
 
-        if (chroniclesData.length == 0 || meanTimeData.length == 0 || recievers.length == 0 || amounts.length == 0) {
+        if (chroniclesData.length == 0 || meanTimeData.length == 0 || receivers.length == 0 || amounts.length == 0) {
             revert InvalidDataFromCallBreaker();
         }
 
         blockTime.moveTime(
             abi.decode(chroniclesData, (IBlockTime.Chronicle[])),
             abi.decode(meanTimeData, (uint256)),
-            abi.decode(recievers, (address[])),
+            abi.decode(receivers, (address[])),
             abi.decode(amounts, (uint256[]))
         );
 

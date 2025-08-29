@@ -116,7 +116,7 @@ contract BlockTimeSchedulerTest is Test {
         AdditionalData[] memory mevTimeData = new AdditionalData[](4);
         mevTimeData[0] = AdditionalData({key: keccak256(abi.encodePacked("Chronicles")), value: chroniclesData});
         mevTimeData[1] = AdditionalData({key: keccak256(abi.encodePacked("CurrentMeanTime")), value: meanTimeData});
-        mevTimeData[2] = AdditionalData({key: keccak256(abi.encodePacked("Recievers")), value: receiversData});
+        mevTimeData[2] = AdditionalData({key: keccak256(abi.encodePacked("Receivers")), value: receiversData});
         mevTimeData[3] = AdditionalData({key: keccak256(abi.encodePacked("Amounts")), value: amountsData});
 
         bytes memory validatorSignature = signatureHelper.generateValidatorSignature(mevTimeData, validatorPrivateKey);
