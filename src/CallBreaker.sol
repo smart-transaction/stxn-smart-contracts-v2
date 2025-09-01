@@ -160,13 +160,11 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @notice executes and verifies that the given calls, when executed, gives the correct return values
     /// @dev SECURITY NOTICE: This function is only callable when the portal is closed. It requires the caller to be an EOA.
     /// @param _userObjectives The calls to be executed
-    /// @param _signatures The signatures of the user objectives
     /// @param _orderOfExecution Array of indexes specifying order of execution based on DAG
     /// @param _returnsBytes The return values provided by solver to be compareed with return values from call obj execution if user hasn't provided one
     /// @param _mevTimeData To be used in the execute and verify call, also reserved for tipping the solver
     function executeAndVerify(
         UserObjective[] calldata _userObjectives,
-        bytes[] calldata _signatures,
         bytes[] calldata _returnsBytes,
         uint256[] calldata _orderOfExecution,
         MevTimeData calldata _mevTimeData
@@ -180,9 +178,8 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             _verifySignatures(messageHash, _mevTimeData.validatorSignature, validatorAddress);
         }
 
-        uint256 callLength = _setupExecutionData(
-            _userObjectives, _signatures, _returnsBytes, _orderOfExecution, _mevTimeData.mevTimeDataValues
-        );
+        uint256 callLength =
+            _setupExecutionData(_userObjectives, _returnsBytes, _orderOfExecution, _mevTimeData.mevTimeDataValues);
         uint256[] memory gasPerUser =
             _executeAndVerifyCalls(_userObjectives.length, callLength, _orderOfExecution, _returnsBytes);
         _collectCostOfExecution(_userObjectives, gasPerUser);
@@ -303,7 +300,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function getCallIndex(CallObject memory callObj) public view returns (uint256[] memory callIndices) {
         bytes32 encodedCallObj = keccak256(abi.encode(callObj));
         callIndices = callObjIndices[encodedCallObj];
-
         if (callIndices.length == 0) {
             revert CallNotFound();
         }
@@ -433,7 +429,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
     function _setupExecutionData(
         UserObjective[] memory userObjectives,
-        bytes[] memory signatures,
         bytes[] memory returnValues,
         uint256[] memory orderOfExecution,
         AdditionalData[] memory mevTimeDataValues
@@ -444,10 +439,9 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             bytes32 messageHash = getMessageHash(
                 abi.encode(userObjectives[i].nonce, userObjectives[i].sender, abi.encode(userObjectives[i].callObjects))
             );
-            _verifySignatures(messageHash, signatures[i], userObjectives[i].sender);
+            _verifySignatures(messageHash, userObjectives[i].signature, userObjectives[i].sender);
 
             callGrid.push(userObjectives[i].callObjects);
-
             callLength += userObjectives[i].callObjects.length;
         }
 
@@ -732,7 +726,6 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             s := mload(add(signature, 64))
             v := byte(0, mload(add(signature, 96)))
         }
-
         address recoveredAddress = ecrecover(messageHash, v, r, s);
 
         if (recoveredAddress != sender) {
