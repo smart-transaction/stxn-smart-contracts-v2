@@ -175,7 +175,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         if (validatorAddress != address(0)) {
             bytes32 messageHash = getMessageHash(abi.encode(_mevTimeData.mevTimeDataValues));
-            _verifySignatures(messageHash, _mevTimeData.validatorSignature, validatorAddress);
+            _verifySignature(messageHash, _mevTimeData.validatorSignature, validatorAddress);
         }
 
         uint256 callLength =
@@ -439,7 +439,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
             bytes32 messageHash = getMessageHash(
                 abi.encode(userObjectives[i].nonce, userObjectives[i].sender, abi.encode(userObjectives[i].callObjects))
             );
-            _verifySignatures(messageHash, userObjectives[i].signature, userObjectives[i].sender);
+            _verifySignature(messageHash, userObjectives[i].signature, userObjectives[i].sender);
 
             callGrid.push(userObjectives[i].callObjects);
             callLength += userObjectives[i].callObjects.length;
@@ -714,7 +714,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         emit CallIndicesPopulated();
     }
 
-    function _verifySignatures(bytes32 messageHash, bytes memory signature, address sender) internal pure {
+    function _verifySignature(bytes32 messageHash, bytes memory signature, address sender) internal pure {
         require(signature.length == 65, "Invalid signature length");
 
         bytes32 r;

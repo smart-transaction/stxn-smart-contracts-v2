@@ -32,7 +32,7 @@ contract SignatureHelper is Test {
         signature = abi.encodePacked(r, s, v);
     }
 
-    function generateInvalidSignaturesUsingLength() external pure returns (bytes memory) {
+    function generateInvalidSignatureUsingLength() external pure returns (bytes memory) {
         bytes memory signature;
         signature = abi.encodePacked(bytes32(0), bytes32(0)); // Incorrect length (missing v)
         return signature;

@@ -73,8 +73,9 @@ contract SelfCheckoutTest is Test {
             address(selfCheckout), abi.encodeWithSignature("takeSomeAtokenFromOwner(uint256)", 10), ""
         );
 
+        bytes memory userSignature = signatureHelper.generateSignature(1, user, userPrivateKey, userCallObjs);
         UserObjective memory userObjective = CallBreakerTestHelper.buildUserObjectiveWithAllParams(
-            hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs
+            hex"01", 1, 0, block.chainid, 0, 0, user, userSignature, userCallObjs
         );
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
@@ -112,12 +113,8 @@ contract SelfCheckoutTest is Test {
         callObjs[3] =
             CallBreakerTestHelper.buildCallObject(address(selfCheckout), abi.encodeWithSignature("checkBalance()"), "");
 
-        userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, callObjs);
-
-        // generate signature
-        bytes[] memory signatures = new bytes[](2);
-        signatures[0] = signatureHelper.generateSignature(userObjs[0], userPrivateKey);
-        signatures[1] = signatureHelper.generateSignature(userObjs[1], solverPrivateKey);
+        bytes memory solverSignature = signatureHelper.generateSignature(0, solver, solverPrivateKey, callObjs);
+        userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, solverSignature, callObjs);
 
         // setting order of execution
         uint256[] memory orderOfExecution = new uint256[](6);
@@ -146,7 +143,7 @@ contract SelfCheckoutTest is Test {
         // solver executing the executeAndVerify()
         vm.prank(solver);
         callBreaker.executeAndVerify(
-            userObjs, signatures, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
+            userObjs, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
         );
 
         // transfer the erc20b to user

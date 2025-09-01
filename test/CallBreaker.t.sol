@@ -413,7 +413,7 @@ contract CallBreakerTest is Test {
                 returnValues[i] = abi.encode(i + 1);
             }
 
-            bytes memory signature = signatureHelper.generateInvalidSignaturesUsingLength(); // Generates bad signatures
+            bytes memory signature = signatureHelper.generateInvalidSignatureUsingLength(); // Generates bad signatures
             userObjs[i] = CallBreakerTestHelper.buildUserObjective(0, users[i], signature, callObjs);
         }
 
