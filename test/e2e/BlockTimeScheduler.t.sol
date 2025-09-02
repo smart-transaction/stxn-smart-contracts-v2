@@ -60,11 +60,10 @@ contract BlockTimeSchedulerTest is Test {
         userCallObjs[0] = CallBreakerTestHelper.buildCallObject(
             address(blockTimeScheduler), abi.encodeWithSignature("updateTime()"), ""
         );
-
+        bytes memory userSignature = signatureHelper.generateSignature(1, user, userPrivateKey, userCallObjs);
         UserObjective memory userObjective = CallBreakerTestHelper.buildUserObjectiveWithAllParams(
-            hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs
+            hex"01", 1, 0, 1, 0, 0, user, userSignature, userCallObjs
         );
-
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
 
         // Create user objectives for executeAndVerify
@@ -72,8 +71,10 @@ contract BlockTimeSchedulerTest is Test {
         userObjs[0] = userObjective;
 
         //Prepare and push solver objective
+        bytes memory futureUserObjectiveSignature =
+            signatureHelper.generateSignature(1, solver, solverPrivateKey, userCallObjs);
         UserObjective memory futureUserObjective = CallBreakerTestHelper.buildUserObjectiveWithAllParams(
-            hex"01", 1, 0, block.chainid, 0, 0, solver, userCallObjs
+            hex"01", 1, 0, 1, 0, 0, solver, futureUserObjectiveSignature, userCallObjs
         );
 
         CallObject[] memory futureCallObj = new CallObject[](1);
@@ -83,7 +84,7 @@ contract BlockTimeSchedulerTest is Test {
             gas: 1000000,
             addr: address(callBreaker),
             callvalue: abi.encodeWithSignature(
-                "pushUserObjective((bytes,uint256,uint256,uint256,uint256,uint256,address,(uint256,uint256,uint256,address,bytes,bytes,bool,bool,bool)[]),(bytes32,bytes)[])",
+                "pushUserObjective((bytes,uint256,uint256,uint256,uint256,uint256,address,bytes,(uint256,uint256,uint256,address,bytes,bytes,bool,bool,bool)[]),(bytes32,bytes)[])",
                 futureUserObjective,
                 new AdditionalData[](0)
             ),
@@ -93,12 +94,8 @@ contract BlockTimeSchedulerTest is Test {
             exposeReturn: false
         });
 
-        userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, futureCallObj);
-
-        // generate signature
-        bytes[] memory signatures = new bytes[](2);
-        signatures[0] = signatureHelper.generateSignature(userObjs[0], userPrivateKey);
-        signatures[1] = signatureHelper.generateSignature(userObjs[1], solverPrivateKey);
+        bytes memory solverSignature = signatureHelper.generateSignature(0, solver, solverPrivateKey, futureCallObj);
+        userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, solverSignature, futureCallObj);
 
         // setting order of execution
         uint256[] memory orderOfExecution = new uint256[](2);
@@ -113,18 +110,22 @@ contract BlockTimeSchedulerTest is Test {
         // Additional Data
         (bytes memory chroniclesData, bytes memory meanTimeData, bytes memory receiversData, bytes memory amountsData) =
             _getUpdateTimeData(filler, pusher);
-        AdditionalData[] memory mevTimeData = new AdditionalData[](4);
+        AdditionalData[] memory mevTimeData = new AdditionalData[](5);
         mevTimeData[0] = AdditionalData({key: keccak256(abi.encodePacked("Chronicles")), value: chroniclesData});
         mevTimeData[1] = AdditionalData({key: keccak256(abi.encodePacked("CurrentMeanTime")), value: meanTimeData});
         mevTimeData[2] = AdditionalData({key: keccak256(abi.encodePacked("Receivers")), value: receiversData});
         mevTimeData[3] = AdditionalData({key: keccak256(abi.encodePacked("Amounts")), value: amountsData});
+        mevTimeData[4] = AdditionalData({
+            key: keccak256(abi.encodePacked("ReschedulerSignature")),
+            value: futureUserObjectiveSignature
+        });
 
         bytes memory validatorSignature = signatureHelper.generateValidatorSignature(mevTimeData, validatorPrivateKey);
 
         // solver executing the executeAndVerify()
         vm.prank(solver);
         callBreaker.executeAndVerify(
-            userObjs, signatures, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
+            userObjs, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
         );
 
         assertEq(TimeToken(blockTime.timeToken()).balanceOf(filler), 1e18);

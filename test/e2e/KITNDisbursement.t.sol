@@ -57,18 +57,16 @@ contract KITNDisbursementTest is Test {
             address(kitnDisbursement), abi.encodeWithSignature("disburseTokens()"), ""
         );
 
-        UserObjective memory userObjective =
-            CallBreakerTestHelper.buildUserObjectiveWithAllParams(hex"01", 1, 0, block.chainid, 0, 0, user, callObjects);
+        bytes memory userSignature = signatureHelper.generateSignature(1, user, userPrivateKey, callObjects);
+        UserObjective memory userObjective = CallBreakerTestHelper.buildUserObjectiveWithAllParams(
+            hex"01", 1, 0, block.chainid, 0, 0, user, userSignature, callObjects
+        );
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
 
         // Create user objectives for executeAndVerify
         UserObjective[] memory userObjs = new UserObjective[](1);
         userObjs[0] = userObjective;
-
-        // Generate signature
-        bytes[] memory signatures = new bytes[](1);
-        signatures[0] = signatureHelper.generateSignature(userObjs[0], userPrivateKey);
 
         // Setting order of execution
         uint256[] memory orderOfExecution = new uint256[](1);
@@ -87,7 +85,7 @@ contract KITNDisbursementTest is Test {
         // Solver executing the executeAndVerify()
         vm.prank(solver);
         callBreaker.executeAndVerify(
-            userObjs, signatures, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
+            userObjs, returnValues, orderOfExecution, MevTimeData(validatorSignature, mevTimeData)
         );
 
         assertEq(kitnToken.balanceOf(address(0x1111111111111111111111111111111111111111)), 1);

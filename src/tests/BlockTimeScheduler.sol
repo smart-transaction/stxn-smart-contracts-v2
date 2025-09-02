@@ -65,6 +65,8 @@ contract BlockTimeScheduler is Ownable {
             CallBreaker(payable(callBreaker)).mevTimeDataStore(keccak256(abi.encodePacked("Receivers")));
         bytes memory amounts =
             CallBreaker(payable(callBreaker)).mevTimeDataStore(keccak256(abi.encodePacked("Amounts")));
+        bytes memory reschedulerSignature =
+            CallBreaker(payable(callBreaker)).mevTimeDataStore(keccak256(abi.encodePacked("ReschedulerSignature")));
 
         if (chroniclesData.length == 0 || meanTimeData.length == 0 || receivers.length == 0 || amounts.length == 0) {
             revert InvalidDataFromCallBreaker();
@@ -96,10 +98,11 @@ contract BlockTimeScheduler is Ownable {
             appId: hex"01",
             nonce: 1,
             tip: 0,
-            chainId: block.chainid,
+            chainId: 1,
             maxFeePerGas: 0,
             maxPriorityFeePerGas: 0,
             sender: reschedulerAddress,
+            signature: reschedulerSignature,
             callObjects: futureUserCallObj
         });
 
@@ -109,7 +112,7 @@ contract BlockTimeScheduler is Ownable {
             gas: 1000000,
             addr: address(callBreaker),
             callvalue: abi.encodeWithSignature(
-                "pushUserObjective((bytes,uint256,uint256,uint256,uint256,uint256,address,(uint256,uint256,uint256,address,bytes,bytes,bool,bool,bool)[]),(bytes32,bytes)[])",
+                "pushUserObjective((bytes,uint256,uint256,uint256,uint256,uint256,address,bytes,(uint256,uint256,uint256,address,bytes,bytes,bool,bool,bool)[]),(bytes32,bytes)[])",
                 futureUserObj,
                 new AdditionalData[](0)
             ),
