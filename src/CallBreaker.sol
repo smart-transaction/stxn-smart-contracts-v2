@@ -655,6 +655,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _collectCostOfExecution(UserObjective[] memory userObjs, uint256[] memory gasPerUser) internal {
         uint256 userCount = userObjs.length;
         for (uint256 i; i < userCount; i++) {
+            if (userObjs[i].sender != msg.sender) {
             // Calculate cost for this user's gas usage and tip
             uint256 userCost = gasPerUser[i] * _effectiveGasPrice(userObjs[i]);
             userCost += userObjs[i].tip;
@@ -666,6 +667,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
             senderBalances[userObjs[i].sender] -= userCost;
             senderBalances[msg.sender] += userCost;
+            }
         }
     }
 
