@@ -338,6 +338,84 @@ contract CallBreakerTest is Test {
         assertEq(length, 0);
     }
 
+    function testStorageStateBeforeAndAfterExecuteAndVerify() public {
+        (UserObjective[] memory userObjs, bytes[] memory returnValues) = _prepareInputsForCounter(3, false);
+
+        uint256[] memory orderOfExecution = new uint256[](3);
+        orderOfExecution[0] = 2;
+        orderOfExecution[1] = 0;
+        orderOfExecution[2] = 1;
+        (
+            bytes memory beforeOrderOfExecutionStatus,
+            uint256 beforeCallGridLengthStatus,
+            bool beforeCallGridHasValuesStatus,
+            bool beforeMevTimeDataKeyListHasValuesStatus
+        ) = _getValuesOfStorageVariables(userObjs);
+        vm.prank(solver);
+        callBreaker.executeAndVerify(userObjs, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
+        (
+            bytes memory afterOrderOfExecutionStatus,
+            uint256 afterCallGridLengthStatus,
+            bool afterCallGridHasValuesStatus,
+            bool afterMevTimeDataKeyListHasValuesStatus
+        ) = _getValuesOfStorageVariables(userObjs);
+
+        assertEq(beforeOrderOfExecutionStatus, afterOrderOfExecutionStatus, "Order of execution status is not the same");
+        assertEq(beforeCallGridLengthStatus, afterCallGridLengthStatus, "Call grid length status is not the same");
+        assertEq(
+            beforeCallGridHasValuesStatus, afterCallGridHasValuesStatus, "Call grid has values status is not the same"
+        );
+        assertEq(
+            beforeMevTimeDataKeyListHasValuesStatus,
+            afterMevTimeDataKeyListHasValuesStatus,
+            "Mev time data key list has values status is not the same"
+        );
+    }
+
+    function _getValuesOfStorageVariables(UserObjective[] memory userObjs)
+        internal
+        returns (
+            bytes memory orderOfExecutionStatus,
+            uint256 callGridLengthStatus,
+            bool callGridHasValuesStatus,
+            bool mevTimeDataKeyListHasValuesStatus
+        )
+    {
+        // check transient storage for order of execution
+        uint256 callOrderSlot = uint256(bytes32(uint256(keccak256("CallBreaker.CALL_ORDER_STORAGE_SLOT")) - 1));
+        assembly ("memory-safe") {
+            orderOfExecutionStatus := tload(callOrderSlot)
+        }
+
+        //check transient storage for call grid length
+        uint256 callGridLengthSlot = uint256(bytes32(uint256(keccak256("CallBreaker.CALL_GRID_LENGTHS_SLOT")) - 1));
+        assembly ("memory-safe") {
+            callGridLengthStatus := tload(callGridLengthSlot)
+        }
+
+        //check callGrid - check if it has any values in the grid
+        bool callGridHasValues = false;
+        try callBreaker.callGrid(0, 0) {
+            callGridHasValues = true; // At least one element exists
+        } catch {
+            callGridHasValues = false; // Grid is empty
+        }
+
+        //check mevTimeDataKeyList - check if it has any values in the key list
+        bool mevTimeDataKeyListHasValues = false;
+        try callBreaker.mevTimeDataKeyList(0) {
+            mevTimeDataKeyListHasValues = true; // At least one element exists
+        } catch {
+            mevTimeDataKeyListHasValues = false; // Grid is empty
+        }
+
+        // check callObjIndices - check if it has any values in the call obj indices
+        vm.expectRevert();
+        callBreaker.getCallIndex(userObjs[0].callObjects[0]);
+
+        return (orderOfExecutionStatus, callGridLengthStatus, callGridHasValues, mevTimeDataKeyListHasValues);
+    }
+
     function _prepareInputsForCounter(uint256 numValues, bool userReturn)
         internal
         view

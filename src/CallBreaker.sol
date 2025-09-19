@@ -254,7 +254,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         sequenceCounter++;
     }
-    
+
     /// @notice Sets the validator address for a given app ID
     /// @param appId The app ID to set the validator address for
     /// @param validatorAddress The address of the validator
