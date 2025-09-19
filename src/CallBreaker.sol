@@ -55,7 +55,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     mapping(bytes32 => bytes) public mevTimeDataStore;
 
     /// @notice mapping of callId to call index
-    mapping(bytes32 => uint256[]) public callObjIndices;
+    mapping(bytes32 => uint256[]) private _callObjIndices;
 
     /// @notice mapping of app id to its pre-approval address
     mapping(bytes => address) private _preApprovalAddresses;
@@ -254,7 +254,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         sequenceCounter++;
     }
-
+    
     /// @notice Sets the validator address for a given app ID
     /// @param appId The app ID to set the validator address for
     /// @param validatorAddress The address of the validator
@@ -299,7 +299,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @return callIndices The indices of the CallObject
     function getCallIndex(CallObject memory callObj) public view returns (uint256[] memory callIndices) {
         bytes32 encodedCallObj = keccak256(abi.encode(callObj));
-        callIndices = callObjIndices[encodedCallObj];
+        callIndices = _callObjIndices[encodedCallObj];
         if (callIndices.length == 0) {
             revert CallNotFound();
         }
@@ -666,6 +666,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _cleanUpStorage() internal {
         _cleanUpMevTimeData();
         _cleanUpCallIndices();
+        _cleanUpCallGrid();
     }
 
     function _cleanUpMevTimeData() internal {
@@ -683,13 +684,17 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         // if (callObjIndicesSet) {
         for (uint256 u_index; u_index < callGrid.length; u_index++) {
             for (uint256 c_index; c_index < callGrid[u_index].length; c_index++) {
-                delete callObjIndices[
+                delete _callObjIndices[
                     keccak256(abi.encode(callGrid[u_index][c_index]))
                 ];
             }
         }
         //     callObjIndicesSet = false;
         // }
+    }
+
+    function _cleanUpCallGrid() internal {
+        delete callGrid;
     }
 
     /// @notice Populates the mevTimeDataStore with a list of key-value pairs
@@ -707,7 +712,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         for (uint256 index = 0; index < orderOfExecution.length; index++) {
             (uint256 u_index, uint256 c_index) = _resolveFlatIndex(orderOfExecution[index]);
-            callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))].push(index);
+            _callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))].push(index);
         }
 
         // callObjIndicesSet = true;
