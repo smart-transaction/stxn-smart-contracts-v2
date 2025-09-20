@@ -657,17 +657,17 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
         uint256 userCount = userObjs.length;
         for (uint256 i; i < userCount; i++) {
             if (userObjs[i].sender != msg.sender) {
-            // Calculate cost for this user's gas usage and tip
-            uint256 userCost = gasPerUser[i] * _effectiveGasPrice(userObjs[i]);
-            userCost += userObjs[i].tip;
+                // Calculate cost for this user's gas usage and tip
+                uint256 userCost = gasPerUser[i] * _effectiveGasPrice(userObjs[i]);
+                userCost += userObjs[i].tip;
 
-            // Transfer cost from user's balance to solver
-            if (senderBalances[userObjs[i].sender] < userCost) {
-                revert OutOfEther();
-            }
+                // Transfer cost from user's balance to solver
+                if (senderBalances[userObjs[i].sender] < userCost) {
+                    revert OutOfEther();
+                }
 
-            senderBalances[userObjs[i].sender] -= userCost;
-            senderBalances[msg.sender] += userCost;
+                senderBalances[userObjs[i].sender] -= userCost;
+                senderBalances[msg.sender] += userCost;
             }
         }
     }
