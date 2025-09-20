@@ -11,7 +11,6 @@ struct MevTimeData {
 interface ICallBreaker {
     function executeAndVerify(
         UserObjective[] calldata _userObjectives,
-        bytes[] calldata _signatures,
         bytes[] calldata _returnsBytes,
         uint256[] calldata _orderOfExecution,
         MevTimeData calldata _mevTimeData

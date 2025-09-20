@@ -68,8 +68,9 @@ contract FlashLiquidityProvider is Test {
             address(daiWethPool), abi.encodeWithSignature("swapDAIForWETH(uint256,uint256)", 10, 2), ""
         );
 
+        bytes memory userSignature = signatureHelper.generateSignature(1, user, userPrivateKey, userCallObjs);
         UserObjective memory userObjective = CallBreakerTestHelper.buildUserObjectiveWithAllParams(
-            hex"01", 1, 0, block.chainid, 0, 0, user, userCallObjs
+            hex"01", 1, 0, block.chainid, 0, 0, user, userSignature, userCallObjs
         );
 
         callBreaker.pushUserObjective(userObjective, new AdditionalData[](0));
@@ -122,12 +123,8 @@ contract FlashLiquidityProvider is Test {
             address(weth), abi.encodeWithSignature("transfer(address,uint256)", provider, 10 * 1e18), ""
         );
 
-        userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, callObjs);
-
-        // generate signature
-        bytes[] memory signatures = new bytes[](2);
-        signatures[0] = signatureHelper.generateSignature(userObjs[0], userPrivateKey);
-        signatures[1] = signatureHelper.generateSignature(userObjs[1], solverPrivateKey);
+        bytes memory solverSignature = signatureHelper.generateSignature(0, solver, solverPrivateKey, callObjs);
+        userObjs[1] = CallBreakerTestHelper.buildUserObjective(0, solver, solverSignature, callObjs);
 
         // setting order of execution
         uint256[] memory orderOfExecution = new uint256[](9);
@@ -165,9 +162,7 @@ contract FlashLiquidityProvider is Test {
 
         // solver executing the executeAndVerify()
         vm.prank(solver);
-        callBreaker.executeAndVerify(
-            userObjs, signatures, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData()
-        );
+        callBreaker.executeAndVerify(userObjs, returnValues, orderOfExecution, CallBreakerTestHelper.emptyMevTimeData());
 
         assertEq(dai.balanceOf(address(daiWethPool)), 100010 * 1e18);
         assertLe(weth.balanceOf(address(daiWethPool)), 999998 * 1e18);

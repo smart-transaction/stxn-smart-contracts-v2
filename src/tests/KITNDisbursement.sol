@@ -49,7 +49,7 @@ contract KITNDisbursement is IKITNDisbursement, Ownable {
         callBreaker = _callBreaker;
     }
 
-    /// @notice verifies the validatorNodeSignature and transfer token to receivers
+    /// @notice Transfer token to receivers
     /// @dev Requires caller to be the callBreaker
     function disburseTokens() external onlyCallBreaker {
         // Retrieve data from CallBreaker's mevTimeStore

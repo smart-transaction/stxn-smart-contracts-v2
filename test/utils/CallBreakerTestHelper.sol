@@ -26,7 +26,7 @@ library CallBreakerTestHelper {
     /// @param sender The sender address
     /// @param callObjs Array of call objects
     /// @return The constructed UserObjective
-    function buildUserObjective(uint256 nonce, address sender, CallObject[] memory callObjs)
+    function buildUserObjective(uint256 nonce, address sender, bytes memory signature, CallObject[] memory callObjs)
         internal
         pure
         returns (UserObjective memory)
@@ -39,6 +39,7 @@ library CallBreakerTestHelper {
             maxFeePerGas: DEFAULT_MAX_FEE_PER_GAS,
             maxPriorityFeePerGas: DEFAULT_MAX_PRIORITY_FEE_PER_GAS,
             sender: sender,
+            signature: signature,
             callObjects: callObjs
         });
     }
@@ -49,11 +50,13 @@ library CallBreakerTestHelper {
     /// @param sender The sender address
     /// @param callObjs Array of call objects
     /// @return The constructed UserObjective
-    function buildCrossChainUserObjective(uint256 chainId, uint256 nonce, address sender, CallObject[] memory callObjs)
-        internal
-        pure
-        returns (UserObjective memory)
-    {
+    function buildCrossChainUserObjective(
+        uint256 chainId,
+        uint256 nonce,
+        address sender,
+        bytes memory signature,
+        CallObject[] memory callObjs
+    ) internal pure returns (UserObjective memory) {
         return UserObjective({
             appId: DEFAULT_APP_ID,
             nonce: nonce,
@@ -62,6 +65,7 @@ library CallBreakerTestHelper {
             maxFeePerGas: DEFAULT_MAX_FEE_PER_GAS,
             maxPriorityFeePerGas: DEFAULT_MAX_PRIORITY_FEE_PER_GAS,
             sender: sender,
+            signature: signature,
             callObjects: callObjs
         });
     }
@@ -76,6 +80,7 @@ library CallBreakerTestHelper {
     function buildUserObjectiveWithCustomGas(
         uint256 nonce,
         address sender,
+        bytes memory signature,
         CallObject[] memory callObjs,
         uint256 maxFeePerGas,
         uint256 maxPriorityFeePerGas
@@ -88,6 +93,7 @@ library CallBreakerTestHelper {
             maxFeePerGas: maxFeePerGas,
             maxPriorityFeePerGas: maxPriorityFeePerGas,
             sender: sender,
+            signature: signature,
             callObjects: callObjs
         });
     }
@@ -98,11 +104,13 @@ library CallBreakerTestHelper {
     /// @param callObjs Array of call objects
     /// @param tip Custom tip amount
     /// @return The constructed UserObjective
-    function buildUserObjectiveWithTip(uint256 nonce, address sender, CallObject[] memory callObjs, uint256 tip)
-        internal
-        pure
-        returns (UserObjective memory)
-    {
+    function buildUserObjectiveWithTip(
+        uint256 nonce,
+        address sender,
+        bytes memory signature,
+        CallObject[] memory callObjs,
+        uint256 tip
+    ) internal pure returns (UserObjective memory) {
         return UserObjective({
             appId: DEFAULT_APP_ID,
             nonce: nonce,
@@ -111,6 +119,7 @@ library CallBreakerTestHelper {
             maxFeePerGas: DEFAULT_MAX_FEE_PER_GAS,
             maxPriorityFeePerGas: DEFAULT_MAX_PRIORITY_FEE_PER_GAS,
             sender: sender,
+            signature: signature,
             callObjects: callObjs
         });
     }
@@ -125,6 +134,7 @@ library CallBreakerTestHelper {
         bytes memory appId,
         uint256 nonce,
         address sender,
+        bytes memory signature,
         CallObject[] memory callObjs
     ) internal pure returns (UserObjective memory) {
         return UserObjective({
@@ -135,6 +145,7 @@ library CallBreakerTestHelper {
             maxFeePerGas: DEFAULT_MAX_FEE_PER_GAS,
             maxPriorityFeePerGas: DEFAULT_MAX_PRIORITY_FEE_PER_GAS,
             sender: sender,
+            signature: signature,
             callObjects: callObjs
         });
     }
@@ -157,6 +168,7 @@ library CallBreakerTestHelper {
         uint256 maxFeePerGas,
         uint256 maxPriorityFeePerGas,
         address sender,
+        bytes memory signature,
         CallObject[] memory callObjs
     ) internal pure returns (UserObjective memory) {
         return UserObjective({
@@ -167,6 +179,7 @@ library CallBreakerTestHelper {
             maxFeePerGas: maxFeePerGas,
             maxPriorityFeePerGas: maxPriorityFeePerGas,
             sender: sender,
+            signature: signature,
             callObjects: callObjs
         });
     }
@@ -176,11 +189,12 @@ library CallBreakerTestHelper {
     /// @param sender The sender address
     /// @param callObjs Array of call objects
     /// @return The constructed UserObjective
-    function buildUserObjectiveWithInsufficientBalance(uint256 nonce, address sender, CallObject[] memory callObjs)
-        internal
-        pure
-        returns (UserObjective memory)
-    {
+    function buildUserObjectiveWithInsufficientBalance(
+        uint256 nonce,
+        address sender,
+        bytes memory signature,
+        CallObject[] memory callObjs
+    ) internal pure returns (UserObjective memory) {
         return UserObjective({
             appId: DEFAULT_APP_ID,
             nonce: nonce,
@@ -189,6 +203,7 @@ library CallBreakerTestHelper {
             maxFeePerGas: 500_000 gwei,
             maxPriorityFeePerGas: 500_000 gwei,
             sender: sender,
+            signature: signature,
             callObjects: callObjs
         });
     }

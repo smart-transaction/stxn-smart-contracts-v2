@@ -56,7 +56,7 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
     mapping(bytes32 => bytes) public mevTimeDataStore;
 
     /// @notice mapping of callId to call index
-    mapping(bytes32 => uint256[]) public callObjIndices;
+    mapping(bytes32 => uint256[]) private _callObjIndices;
 
     /// @notice mapping of app id to its pre-approval address
     mapping(bytes => address) private _preApprovalAddresses;
@@ -161,13 +161,11 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
     /// @notice executes and verifies that the given calls, when executed, gives the correct return values
     /// @dev SECURITY NOTICE: This function is only callable when the portal is closed. It requires the caller to be an EOA.
     /// @param _userObjectives The calls to be executed
-    /// @param _signatures The signatures of the user objectives
     /// @param _orderOfExecution Array of indexes specifying order of execution based on DAG
     /// @param _returnsBytes The return values provided by solver to be compareed with return values from call obj execution if user hasn't provided one
     /// @param _mevTimeData To be used in the execute and verify call, also reserved for tipping the solver
     function executeAndVerify(
         UserObjective[] calldata _userObjectives,
-        bytes[] calldata _signatures,
         bytes[] calldata _returnsBytes,
         uint256[] calldata _orderOfExecution,
         MevTimeData calldata _mevTimeData
@@ -178,12 +176,11 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
 
         if (validatorAddress != address(0)) {
             bytes32 messageHash = getMessageHash(abi.encode(_mevTimeData.mevTimeDataValues));
-            _verifySignatures(messageHash, _mevTimeData.validatorSignature, validatorAddress);
+            _verifySignature(messageHash, _mevTimeData.validatorSignature, validatorAddress);
         }
 
-        uint256 callLength = _setupExecutionData(
-            _userObjectives, _signatures, _returnsBytes, _orderOfExecution, _mevTimeData.mevTimeDataValues
-        );
+        uint256 callLength =
+            _setupExecutionData(_userObjectives, _returnsBytes, _orderOfExecution, _mevTimeData.mevTimeDataValues);
         uint256[] memory gasPerUser =
             _executeAndVerifyCalls(_userObjectives.length, callLength, _orderOfExecution, _returnsBytes);
         _collectCostOfExecution(_userObjectives, gasPerUser);
@@ -303,8 +300,7 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
     /// @return callIndices The indices of the CallObject
     function getCallIndex(CallObject memory callObj) public view returns (uint256[] memory callIndices) {
         bytes32 encodedCallObj = keccak256(abi.encode(callObj));
-        callIndices = callObjIndices[encodedCallObj];
-
+        callIndices = _callObjIndices[encodedCallObj];
         if (callIndices.length == 0) {
             revert CallNotFound();
         }
@@ -434,7 +430,6 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
 
     function _setupExecutionData(
         UserObjective[] memory userObjectives,
-        bytes[] memory signatures,
         bytes[] memory returnValues,
         uint256[] memory orderOfExecution,
         AdditionalData[] memory mevTimeDataValues
@@ -445,10 +440,9 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
             bytes32 messageHash = getMessageHash(
                 abi.encode(userObjectives[i].nonce, userObjectives[i].sender, abi.encode(userObjectives[i].callObjects))
             );
-            _verifySignatures(messageHash, signatures[i], userObjectives[i].sender);
+            _verifySignature(messageHash, userObjectives[i].signature, userObjectives[i].sender);
 
             callGrid.push(userObjectives[i].callObjects);
-
             callLength += userObjectives[i].callObjects.length;
         }
 
@@ -675,6 +669,7 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
     function _cleanUpStorage() internal {
         _cleanUpMevTimeData();
         _cleanUpCallIndices();
+        _cleanUpCallGrid();
     }
 
     function _cleanUpMevTimeData() internal {
@@ -692,13 +687,17 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
         // if (callObjIndicesSet) {
         for (uint256 u_index; u_index < callGrid.length; u_index++) {
             for (uint256 c_index; c_index < callGrid[u_index].length; c_index++) {
-                delete callObjIndices[
+                delete _callObjIndices[
                     keccak256(abi.encode(callGrid[u_index][c_index]))
                 ];
             }
         }
         //     callObjIndicesSet = false;
         // }
+    }
+
+    function _cleanUpCallGrid() internal {
+        delete callGrid;
     }
 
     /// @notice Populates the mevTimeDataStore with a list of key-value pairs
@@ -716,14 +715,14 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
 
         for (uint256 index = 0; index < orderOfExecution.length; index++) {
             (uint256 u_index, uint256 c_index) = _resolveFlatIndex(orderOfExecution[index]);
-            callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))].push(index);
+            _callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))].push(index);
         }
 
         // callObjIndicesSet = true;
         emit CallIndicesPopulated();
     }
 
-    function _verifySignatures(bytes32 messageHash, bytes memory signature, address sender) internal pure {
+    function _verifySignature(bytes32 messageHash, bytes memory signature, address sender) internal pure {
         require(signature.length == 65, "Invalid signature length");
 
         bytes32 r;
@@ -735,7 +734,6 @@ contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
             s := mload(add(signature, 64))
             v := byte(0, mload(add(signature, 96)))
         }
-
         address recoveredAddress = ecrecover(messageHash, v, r, s);
 
         if (recoveredAddress != sender) {
