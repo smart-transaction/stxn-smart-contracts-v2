@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
-import {CallObject, UserObjective, AdditionalData, ICallBreaker, MevTimeData} from "src/interfaces/ICallBreaker.sol";
+import {CallObject, UserObjective, AdditionalData, MevTimeData} from "src/interfaces/ICallBreaker.sol";
 import {CallBreaker} from "src/CallBreaker.sol";
 import {MEVTimeCompute} from "src/tests/MEVTimeCompute.sol";
 import {CallBreakerTestHelper} from "../utils/CallBreakerTestHelper.sol";

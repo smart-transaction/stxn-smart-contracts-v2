@@ -2,12 +2,13 @@
 pragma solidity 0.8.30;
 
 import {ICallBreaker, CallObject, UserObjective, MevTimeData, AdditionalData} from "src/interfaces/ICallBreaker.sol";
+import {ISmartExecute} from "src/interfaces/ISmartExecute.sol";
 import {IApprover} from "src/interfaces/IApprover.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
+contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
 
     uint256 public constant MAX_RETURN_VALUE_SIZE = 1024;
