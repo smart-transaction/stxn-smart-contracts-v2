@@ -1,6 +1,6 @@
 pragma solidity 0.8.30;
 
-import {UserObjective} from "src/interfaces/ICallBreaker.sol";
+import {UserObjective} from "src/interfaces/ISmartExecute.sol";
 
 interface IApprover {
     function preapprove(UserObjective calldata _userObjective) external payable returns (bool);

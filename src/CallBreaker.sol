@@ -2,12 +2,13 @@
 pragma solidity 0.8.30;
 
 import {ICallBreaker, CallObject, UserObjective, MevTimeData, AdditionalData} from "src/interfaces/ICallBreaker.sol";
+import {ISmartExecute} from "src/interfaces/ISmartExecute.sol";
 import {IApprover} from "src/interfaces/IApprover.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
+contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
 
     uint256 public constant MAX_RETURN_VALUE_SIZE = 1024;
@@ -649,17 +650,19 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _collectCostOfExecution(UserObjective[] memory userObjs, uint256[] memory gasPerUser) internal {
         uint256 userCount = userObjs.length;
         for (uint256 i; i < userCount; i++) {
-            // Calculate cost for this user's gas usage and tip
-            uint256 userCost = gasPerUser[i] * _effectiveGasPrice(userObjs[i]);
-            userCost += userObjs[i].tip;
+            if (userObjs[i].sender != msg.sender) {
+                // Calculate cost for this user's gas usage and tip
+                uint256 userCost = gasPerUser[i] * _effectiveGasPrice(userObjs[i]);
+                userCost += userObjs[i].tip;
 
-            // Transfer cost from user's balance to solver
-            if (senderBalances[userObjs[i].sender] < userCost) {
-                revert OutOfEther();
+                // Transfer cost from user's balance to solver
+                if (senderBalances[userObjs[i].sender] < userCost) {
+                    revert OutOfEther();
+                }
+
+                senderBalances[userObjs[i].sender] -= userCost;
+                senderBalances[msg.sender] += userCost;
             }
-
-            senderBalances[userObjs[i].sender] -= userCost;
-            senderBalances[msg.sender] += userCost;
         }
     }
 
