@@ -38,14 +38,15 @@ contract MockDaiWethPool {
         return (_balanceOfDai, _balanceOfWeth);
     }
 
-    function swapDAIForWETH(uint256 _amountIn, uint256 slippagePercent) public {
+    function swapDAIForWETH(uint256 _amountIn, address from, uint256 slippagePercent) public {
+        // from
         uint256 amountIn = _amountIn * 1e18;
-        require(dai.transferFrom(msg.sender, address(this), amountIn), "transferFrom failed.");
+        require(dai.transferFrom(from, address(this), amountIn), "transferFrom failed.");
 
         _balanceOfDai += amountIn;
         uint256 amountOut = (amountIn * _balanceOfWeth) / _balanceOfDai;
         _balanceOfWeth -= amountOut;
-        require(weth.transfer(msg.sender, amountOut), "transferFrom failed.");
+        require(weth.transfer(from, amountOut), "transferFrom failed.");
 
         // check whether or not
         CallObject[] memory callObjs = new CallObject[](1);
