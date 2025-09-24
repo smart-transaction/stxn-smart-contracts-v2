@@ -2,12 +2,13 @@
 pragma solidity 0.8.30;
 
 import {ICallBreaker, CallObject, UserObjective, MevTimeData, AdditionalData} from "src/interfaces/ICallBreaker.sol";
+import {ISmartExecute} from "src/interfaces/ISmartExecute.sol";
 import {IApprover} from "src/interfaces/IApprover.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
+contract CallBreaker is ICallBreaker, ISmartExecute, ReentrancyGuard, Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
 
     uint256 public constant MAX_RETURN_VALUE_SIZE = 1024;
@@ -55,7 +56,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     mapping(bytes32 => bytes) public mevTimeDataStore;
 
     /// @notice mapping of callId to call index
-    mapping(bytes32 => uint256[]) public callObjIndices;
+    mapping(bytes32 => uint256[]) private _callObjIndices;
 
     /// @notice mapping of app id to its pre-approval address
     mapping(bytes => address) private _preApprovalAddresses;
@@ -299,7 +300,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     /// @return callIndices The indices of the CallObject
     function getCallIndex(CallObject memory callObj) public view returns (uint256[] memory callIndices) {
         bytes32 encodedCallObj = keccak256(abi.encode(callObj));
-        callIndices = callObjIndices[encodedCallObj];
+        callIndices = _callObjIndices[encodedCallObj];
         if (callIndices.length == 0) {
             revert CallNotFound();
         }
@@ -649,23 +650,26 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
     function _collectCostOfExecution(UserObjective[] memory userObjs, uint256[] memory gasPerUser) internal {
         uint256 userCount = userObjs.length;
         for (uint256 i; i < userCount; i++) {
-            // Calculate cost for this user's gas usage and tip
-            uint256 userCost = gasPerUser[i] * _effectiveGasPrice(userObjs[i]);
-            userCost += userObjs[i].tip;
+            if (userObjs[i].sender != msg.sender) {
+                // Calculate cost for this user's gas usage and tip
+                uint256 userCost = gasPerUser[i] * _effectiveGasPrice(userObjs[i]);
+                userCost += userObjs[i].tip;
 
-            // Transfer cost from user's balance to solver
-            if (senderBalances[userObjs[i].sender] < userCost) {
-                revert OutOfEther();
+                // Transfer cost from user's balance to solver
+                if (senderBalances[userObjs[i].sender] < userCost) {
+                    revert OutOfEther();
+                }
+
+                senderBalances[userObjs[i].sender] -= userCost;
+                senderBalances[msg.sender] += userCost;
             }
-
-            senderBalances[userObjs[i].sender] -= userCost;
-            senderBalances[msg.sender] += userCost;
         }
     }
 
     function _cleanUpStorage() internal {
         _cleanUpMevTimeData();
         _cleanUpCallIndices();
+        _cleanUpCallGrid();
     }
 
     function _cleanUpMevTimeData() internal {
@@ -683,13 +687,17 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
         // if (callObjIndicesSet) {
         for (uint256 u_index; u_index < callGrid.length; u_index++) {
             for (uint256 c_index; c_index < callGrid[u_index].length; c_index++) {
-                delete callObjIndices[
+                delete _callObjIndices[
                     keccak256(abi.encode(callGrid[u_index][c_index]))
                 ];
             }
         }
         //     callObjIndicesSet = false;
         // }
+    }
+
+    function _cleanUpCallGrid() internal {
+        delete callGrid;
     }
 
     /// @notice Populates the mevTimeDataStore with a list of key-value pairs
@@ -707,7 +715,7 @@ contract CallBreaker is ICallBreaker, ReentrancyGuard, Ownable {
 
         for (uint256 index = 0; index < orderOfExecution.length; index++) {
             (uint256 u_index, uint256 c_index) = _resolveFlatIndex(orderOfExecution[index]);
-            callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))].push(index);
+            _callObjIndices[keccak256(abi.encode(callGrid[u_index][c_index]))].push(index);
         }
 
         // callObjIndicesSet = true;
