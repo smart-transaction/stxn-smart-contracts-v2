@@ -39,6 +39,8 @@ struct UserObjective {
     uint256 maxPriorityFeePerGas;
     /// @notice Address of the user who submitted this objective
     address sender;
+    /// @notice Signature of user objective
+    bytes signature;
     /// @notice Array of call objects to be executed for this user
     CallObject[] callObjects;
 }
